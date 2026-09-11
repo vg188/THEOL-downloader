@@ -1,0 +1,11 @@
+# Local browser investigation artifacts may contain private account information.
+.playwright-cli/
+output/playwright/
+
+# Development outputs and local configuration.
+node_modules/
+coverage/
+dist/
+.env
+.env.*
+!.env.example
