@@ -17,6 +17,9 @@ export function pathWithoutSession(path) {
   return path.replace(/;jsessionid=[^/;]*$/i, '');
 }
 export function schoolUrl(value, base = ORIGIN) {
+  if ((typeof value !== 'string' && !(value instanceof URL)) || !String(value).trim()) {
+    throw new AppError('INVALID_URL', '资源链接无效');
+  }
   let url;
   try { url = new URL(value, base); } catch { throw new AppError('INVALID_URL', '资源链接无效'); }
   if (url.origin !== ORIGIN || url.username || url.password) {
@@ -68,14 +71,22 @@ export function validateFile(value) {
     courseName: typeof value.courseName === 'string' && value.courseName.trim() ? value.courseName.trim().slice(0, 200) : '课件',
   };
 }
+function truncateUtf16(value, maxLength) {
+  const result = value.slice(0, maxLength);
+  return /[\ud800-\udbff]$/.test(result) ? result.slice(0, -1) : result;
+}
 function cleanSegment(value, fallback, maxLength) {
   let result = String(value || '').normalize('NFC')
     .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '_')
     .replace(/[\u202a-\u202e\u2066-\u2069]/g, '')
-    .trim().replace(/[. ]+$/g, '');
-  if (!result || /^\.+$/.test(result)) result = fallback;
-  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(result)) result = '_' + result;
-  return Array.from(result).slice(0, maxLength).join('');
+    .trim();
+  // Truncation can expose a trailing dot/space or turn a long name into CON.
+  result = truncateUtf16(result, maxLength).replace(/[. ]+$/g, '');
+  if (!result) return fallback;
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(result)) {
+    result = '_' + truncateUtf16(result, maxLength - 1).replace(/[. ]+$/g, '');
+  }
+  return result;
 }
 export function buildFilename(courseName, name) {
   const extension = extensionOf(name);

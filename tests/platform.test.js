@@ -80,3 +80,37 @@ test('course title uses only a recognizable course name', () => {
   assert.equal(courseTitle('网络课程—电路与模拟电子技术'), '电路与模拟电子技术');
   assert.equal(courseTitle('THEOL网络教学综合平台-北京化工大学'), '课件');
 });
+
+test('Windows limits count UTF-16 units and truncation cannot create reserved or dot-ending folders', () => {
+  assert.ok(buildFilename('😀'.repeat(70), '😀'.repeat(200) + '.pptx').length <= 180);
+  const dotted = buildFilename('A'.repeat(47) + '.' + 'B'.repeat(40), '课件.ppt');
+  assert.ok(!/[. ]$/.test(dotted.split('/')[0]));
+  const reserved = buildFilename('CON' + ' '.repeat(70) + 'tail', '课件.pdf');
+  assert.notEqual(reserved.split('/')[0].toUpperCase(), 'CON');
+});
+test('explicitly hidden or disabled download controls are not used', () => {
+  for (const attributes of ['hidden', 'aria-disabled="true"', 'style="display: none"', 'style="visibility:hidden"']) {
+    assert.throws(() => parsePreview(dom(preview().replace('<a href=', `<a ${attributes} href=`)), resource()), code('NO_DOWNLOAD'));
+  }
+});
+
+
+test('UTF-16 truncation keeps emoji intact and every path segment within its limit', () => {
+  const result = buildFilename('课' + '😀'.repeat(50), '文' + '😀'.repeat(200) + '.PPTX');
+  const [folder, filename] = result.split('/');
+  assert.ok(folder.length <= 48);
+  assert.ok(filename.length <= 120);
+  assert.ok(result.isWellFormed());
+  assert.ok(result.endsWith('.PPTX'));
+});
+test('download controls in unavailable ancestors are skipped without hiding eligible siblings', () => {
+  for (const attributes of ['hidden', 'inert', 'disabled', 'aria-hidden="true"', 'aria-disabled="true"', 'style="display:none!important"', 'style="visibility:collapse"']) {
+    const html = preview().replace('<a href=', '<span ' + attributes + '><a href=').replace('</a>', '</a></span>');
+    assert.throws(() => parsePreview(dom(html), resource()), code('NO_DOWNLOAD'));
+    assert.equal(parsePreview(dom(html + '<a href="' + file().downloadUrl + '">下载</a>'), resource()).downloadUrl, file().downloadUrl);
+  }
+});
+test('hidden list ancestors do not become scanned resources', () => {
+  const html = '<div style="display:none"><a href="' + previewUrl() + '">隐藏</a></div>';
+  assert.equal(parseDirectory(dom(html), listUrl).resources.length, 0);
+});

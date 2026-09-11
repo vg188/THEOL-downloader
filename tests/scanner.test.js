@@ -34,10 +34,25 @@ test('redirects and wrong response types are not scanned as courseware', async (
   assert.equal(binary.files.length, 0);
 });
 test('timeout covers a stalled response body, not just response headers', async () => {
-  const result = await scanResources([resource()], { fetcher: async () => ({ok:true, status:200, type:'basic', headers:new Headers({'content-type':'text/html'}), text: () => new Promise(() => {})}), parseDocument: dom, timeoutMs:10 });
+  const result = await scanResources([resource()], { fetcher: async () => new Response(new ReadableStream({}), {headers:{'content-type':'text/html'}}), parseDocument: dom, timeoutMs:10 });
   assert.equal(result.failures[0].code, 'TIMEOUT');
 });
 test('empty directories complete without network requests', async () => {
   const result = await scanResources([], { fetcher: () => assert.fail(), parseDocument: dom });
   assert.equal(result.processed, 0);
+});
+
+
+for (const type of ['text/html;charset=gbk', 'text/html; charset="GB2312"']) test('scanner decodes the declared Chinese charset: ' + type, async () => {
+  // Synthetic GBK bytes for 文件名:中文课件.ppt (1M); no live page or account data.
+  const html=Buffer.concat([Buffer.from('<h2>'),Buffer.from('cec4bcfec3fb3ad6d0cec4bfcebcfe2e7070742028314d29','hex'),Buffer.from('<a href="https://course.buct.edu.cn/meol/common/script/download.jsp?fileid=56&resid=78&lid=12">download</a></h2>')]);
+  const result=await scanResources([resource()],{fetcher:async()=>new Response(html,{headers:{'content-type':type}}),parseDocument:dom});
+  assert.equal(result.failures.length,0);
+  assert.equal(result.files[0].name,'中文课件.ppt');
+  assert.equal(result.files[0].sizeText,'1M');
+});
+test('an unknown declared charset is reported without silently corrupting metadata', async () => {
+  const result=await scanResources([resource()],{fetcher:async()=>new Response(preview(),{headers:{'content-type':'text/html; charset=x-not-a-real-charset'}}),parseDocument:dom});
+  assert.equal(result.files.length,0);
+  assert.equal(result.failures[0].code,'BAD_FILE');
 });

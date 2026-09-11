@@ -1,5 +1,15 @@
 import { AppError, ORIGIN, PATHS, pathWithoutSession, schoolUrl, numericParam, normalizeResourceUrl, extensionOf, FORMATS } from './policy.js';
 
+function isUnavailable(element) {
+  for (let node = element; node; node = node.parentElement) {
+    if (['hidden', 'inert', 'disabled'].some(name => node.hasAttribute(name)) ||
+        ['aria-hidden', 'aria-disabled'].some(name => node.getAttribute(name)?.trim().toLowerCase() === 'true') ||
+        node.style?.display.toLowerCase() === 'none' ||
+        ['hidden', 'collapse'].includes(node.style?.visibility.toLowerCase())) return true;
+  }
+  return false;
+}
+
 export function parseDirectory(document, pageUrl) {
   let url, courseId, folderId;
   try {
@@ -10,7 +20,7 @@ export function parseDirectory(document, pageUrl) {
   } catch { return null; }
   const unique = new Map();
   for (const anchor of document.querySelectorAll('a[href]')) {
-    if (anchor.closest('[hidden], [aria-hidden="true"]')) continue;
+    if (isUnavailable(anchor)) continue;
     try {
       const parsed = normalizeResourceUrl(anchor.getAttribute('href'), 'preview', pageUrl);
       if (parsed.courseId !== courseId || unique.has(parsed.id)) continue;
@@ -46,6 +56,7 @@ export function parsePreview(document, resource) {
   if (!FORMATS.has(extension)) throw new AppError('UNSUPPORTED_TYPE', '不是 PDF、PPT 或 PPTX，已跳过');
   let downloadUrl;
   for (const anchor of document.querySelectorAll('a[href]')) {
+    if (isUnavailable(anchor)) continue;
     try {
       const download = normalizeResourceUrl(anchor.getAttribute('href'), 'download', resource.previewUrl);
       if (download.id === identity.id) { downloadUrl = download.url; break; }

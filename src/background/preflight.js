@@ -2,7 +2,7 @@ import { AppError, validateFile, normalizeResourceUrl, isUnsafeMime } from '../p
 import { withDeadline } from '../platform/network.js';
 
 function hasSignature(bytes, extension) {
-  if (extension === 'pdf') return new TextDecoder('latin1').decode(bytes).includes('%PDF-');
+  if (extension === 'pdf') return /^%PDF-\d\.\d(?:[\r\n\t ]|$)/.test(new TextDecoder('latin1').decode(bytes));
   const signature = extension === 'ppt' ? [0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1] : [0x50,0x4b,0x03,0x04];
   return signature.every((value,index) => bytes[index] === value);
 }

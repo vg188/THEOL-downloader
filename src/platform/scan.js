@@ -25,8 +25,14 @@ export async function scanResources(resources, {
           }
           const type = response.headers.get('content-type') || '';
           if (!/text\/html|application\/xhtml\+xml/i.test(type)) throw new AppError('NO_DOWNLOAD', '平台未返回可识别的课件预览页');
-          const html = await response.text();
-          if (html.length > 2 * 1024 * 1024) throw new AppError('BAD_FILE', '预览页内容异常，请在平台确认该资源');
+          // Response.text() always uses UTF-8, but THEOL serves GBK preview pages.
+          const charset = type.match(/(?:^|;)\s*charset\s*=\s*["']?([^;"'\s]+)/i)?.[1] || 'utf-8';
+          let decoder;
+          try { decoder = new TextDecoder(charset); }
+          catch { throw new AppError('BAD_FILE', '预览页的字符编码不受支持，请在平台确认该资源'); }
+          const bytes = await response.arrayBuffer();
+          if (bytes.byteLength > 2 * 1024 * 1024) throw new AppError('BAD_FILE', '预览页内容异常，请在平台确认该资源');
+          const html = decoder.decode(bytes);
           return parsePreview(parseDocument(html), resource);
         }, { timeoutMs, signal });
         result.files.push(file); event = { file };

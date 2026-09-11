@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>北化课件助手</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body>
+<main class="app">
+  <header class="header">
+    <div class="brand-line">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="currentColor"/><path d="M8 7h8l4 4v10H8V7Zm8 0v5h4M14 13v5m-3-2 3 3 3-3" fill="none" stroke="white" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        <h1>北化课件助手</h1><span class="unofficial">非官方</span>
+      </div>
+      <span class="local-badge" title="无服务器、无遥测">本地运行</span>
+    </div>
+    <div class="course-line">
+      <div class="course-copy"><p class="eyebrow">当前课程</p><h2 id="course-name">等待课程页面</h2><p id="scope-copy" class="scope">只扫描当前已加载的列表</p></div>
+      <button id="scan-button" class="button scan-button" type="button" disabled>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 6a7 7 0 1 0 1 7M16 2v5h-5"/></svg><span id="scan-label">扫描课件</span>
+      </button>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="课件与下载记录">
+    <button id="files-tab" type="button" role="tab" aria-selected="true" aria-controls="files-panel" tabindex="0">课件列表<span id="files-count" class="count">0</span></button>
+    <button id="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-panel" tabindex="-1">下载记录<span id="jobs-count" class="count">0</span></button>
+  </nav>
+  <div id="notice" class="notice" role="alert" hidden></div>
+  <section id="files-panel" class="panel" role="tabpanel" aria-labelledby="files-tab">
+    <div class="tools">
+      <label class="search-box"><span class="sr-only">搜索文件名</span><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search-input" type="search" placeholder="搜索文件名" autocomplete="off" spellcheck="false"></label>
+      <div class="filter-row"><div class="filters" role="group" aria-label="按文件格式筛选"><button type="button" data-format="all" aria-pressed="true">全部</button><button type="button" data-format="pdf" aria-pressed="false">PDF</button><button type="button" data-format="ppt" aria-pressed="false">PPT</button><button type="button" data-format="pptx" aria-pressed="false">PPTX</button></div><span id="visible-count" class="muted">0 项</span></div>
+      <div class="select-row"><label><input id="select-all" type="checkbox" disabled><span>全选当前结果</span></label><span id="scan-status" role="status" aria-live="polite">尚未扫描</span></div>
+      <progress id="scan-progress" aria-label="扫描进度" value="0" max="1" hidden></progress>
+    </div>
+    <div class="list-scroll">
+      <ul id="file-list" class="file-list" aria-label="可下载课件"></ul>
+      <div id="empty-state" class="empty-state">
+        <svg class="empty-mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 6h16l9 9v27H12V6Zm16 0v10h9M18 24h13M18 30h9"/></svg>
+        <h3 id="empty-title">先扫描，再挑选</h3><p id="empty-copy">进入课程资源目录，点击“扫描课件”。扫描不会自动下载文件。</p>
+        <div id="skeleton" class="skeleton" aria-hidden="true" hidden><i></i><i></i><i></i></div>
+      </div>
+      <details id="scan-failures" class="failures" hidden><summary id="failure-summary"></summary><ul id="failure-list"></ul></details>
+    </div>
+  </section>
+  <section id="history-panel" class="panel" role="tabpanel" aria-labelledby="history-tab" hidden>
+    <div class="history-tools"><p id="history-summary">本次浏览器会话的下载记录</p><button id="retry-all" class="text-button" type="button" disabled>重试失败</button></div>
+    <div class="list-scroll"><ul id="job-list" class="job-list" aria-label="下载任务"></ul><div id="history-empty" class="empty-state"><svg class="empty-mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 7v24m-8-8 8 8 8-8M10 32v9h28v-9"/></svg><h3>还没有下载记录</h3><p>在课件列表中勾选文件，点击“下载所选”。任务会在这里显示。</p></div></div>
+  </section>
+  <footer class="footer">
+    <div class="footer-meta"><strong id="selection-summary" aria-live="polite">尚未选择课件</strong><button id="native-downloads" class="text-button" type="button">Chrome 下载 <span aria-hidden="true">↗</span></button></div>
+    <button id="download-button" class="button primary" type="button" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg><span id="download-label">下载所选</span></button>
+    <p id="save-hint" class="save-hint">保存到 Chrome 下载目录 / 课程名</p>
+  </footer>
+</main>
+</body>
+</html>

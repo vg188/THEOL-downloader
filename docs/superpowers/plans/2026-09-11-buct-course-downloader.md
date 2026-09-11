@@ -1,6 +1,6 @@
 # BUCT Course Downloader Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 交付可安装的 Chrome 扩展，在用户已登录的北化教学平台当前资源列表中选择并下载 PDF、PPT、PPTX 原文件。
 
@@ -74,7 +74,7 @@
 - `validateFile(file)` → validated FileRecord; `buildFilename(courseName, name)` → safe relative Chrome filename.
 - `AppError(code, message)` and `errorResult(error)` define structured errors for every later task.
 
-- [ ] **1. Write executable parser tests and install only development dependencies.**
+- [x] **1. Write executable parser tests and install only development dependencies.**
 
 ```js
 import assert from 'node:assert/strict';
@@ -97,7 +97,7 @@ test('unlabelled resource link resolves to original PPT', () => {
 
 Commands: `npm install --save-dev esbuild jsdom`; `node --test tests/platform.test.js`. Before implementation the test must fail because the imported source modules do not exist.
 
-- [ ] **2. Implement strict URL/identity parsing and DOM parsing.**
+- [x] **2. Implement strict URL/identity parsing and DOM parsing.**
 
 Only accept the observed preview and download paths on the exact HTTPS origin. Remove session path parameters and unknown query fields from accepted links; require single positive numeric fileid/resid/lid values, no credentials. Do not create a download URL from a preview URL when the HTML has no actual download link. The download identity must equal the preview identity. Derive the filename from the preview heading, strip its label and trailing displayed size, and determine the extension from that name, not the resource title.
 
@@ -113,7 +113,7 @@ if (!new Set(['pdf', 'ppt', 'pptx']).has(extension)) {
 
 Filename policy replaces invalid characters inside each segment, neutralizes dot/absolute paths, reserved device names and trailing dots/spaces, preserves extensions and prevents overwrites through `conflictAction: 'uniquify'` in Task 3. The directory fingerprint includes the actual current resource IDs so pagination/DOM changes invalidate old selection.
 
-- [ ] **3. Add and pass cases for duplicate links, outside hosts, userinfo, JavaScript URLs, mismatched IDs, encoded path attacks, absent size, parentheses in names, uppercase formats, no download link, login HTML, hostile HTML labels and Windows reserved names.**
+- [x] **3. Add and pass cases for duplicate links, outside hosts, userinfo, JavaScript URLs, mismatched IDs, encoded path attacks, absent size, parentheses in names, uppercase formats, no download link, login HTML, hostile HTML labels and Windows reserved names.**
 
 Run `node --test tests/platform.test.js`; commit only the explicit package, source and test paths with message `feat: parse THEOL resources and safe download paths`.
 
@@ -127,7 +127,7 @@ Run `node --test tests/platform.test.js`; commit only the explicit package, sour
 - `createBridge(chrome, {readScan, writeScan})` → `{inspect(tabId), start(tabId), receive(message,sender), assertCurrent(tabId,scanId)}`.
 - Isolated-world API `globalThis.__BUCT_COURSE_V1__` exposes `describe()` and asynchronous `scan(scanId)` only.
 
-- [ ] **1. Test parallelism and partial failure before implementation.**
+- [x] **1. Test parallelism and partial failure before implementation.**
 
 ```js
 const events = [];
@@ -144,11 +144,11 @@ assert.equal(result.files.length + result.failures.length + result.skipped, reso
 
 Fixtures define three valid resources, one non-courseware resource, one rejection, and one request that waits for its abort signal. Verify the slow request times out while valid resources complete. Run `node --test tests/scanner.test.js tests/bridge.test.js` and observe missing-module failure.
 
-- [ ] **2. Implement 3 workers with per-request AbortController and complete response-body timeout coverage.**
+- [x] **2. Implement 3 workers with per-request AbortController and complete response-body timeout coverage.**
 
 Use same-origin credentialed GET for the observed preview link, refuse redirects and non-HTML responses, parse via DOMParser without executing scripts, and await each progress notification. Completion is emitted only after all workers and progress notifications settle. Return failures with resource title/id and safe error code, never HTML bodies.
 
-- [ ] **3. Implement on-demand all-frame injection and context validation.**
+- [x] **3. Implement on-demand all-frame injection and context validation.**
 
 ```js
 await chrome.scripting.executeScript({target: {tabId, allFrames: true}, files: ['content.js']});
@@ -160,7 +160,7 @@ const frames = await chrome.scripting.executeScript({
 
 Choose exactly one list frame compatible with the top-level courseId. Capture frameId and documentId from Chrome, not from page data. Reject ambiguity and non-school tabs. Read the course name from the course document title; use “课件” when unknown. Persist scan state before starting detached work. Accept SCAN_EVENT only for the current scanId, expected tab/frame/document, exact origin and resource IDs discovered in that list. Deduplicate progress items. Ignore late events from previous scans. Before enqueue, inspect the current directory again and reject stale fingerprints. Only popup.html may initiate privileged UI messages.
 
-- [ ] **4. Run scanner/bridge tests, including detached popup, stale scan event, cross-frame sender, multiple directories, top-level course mismatch and directory change. Commit explicit Task 2 files.**
+- [x] **4. Run scanner/bridge tests, including detached popup, stale scan event, cross-frame sender, multiple directories, top-level course mismatch and directory change. Commit explicit Task 2 files.**
 
 ## Task 3: Durable, validated native-download queue
 
@@ -172,7 +172,7 @@ Choose exactly one list frame compatible with the top-level courseId. Capture fr
 - `storage.read()` / `storage.write(QueueState)` use Chrome session storage. `downloads` exposes Promise-based download/search/cancel/show methods.
 - `enqueue(files, requestId)` returns state, reserving only non-active file identities. `retry(jobIds)` only retries failed jobs. `refresh()` reconciles native records and pumps free slots.
 
-- [ ] **1. Write tests before implementation.**
+- [x] **1. Write tests before implementation.**
 
 ```js
 await queue.init();
@@ -189,11 +189,11 @@ assert.equal(downloads.activeCount(), 2);
 
 The fake implements real state transitions and extension ownership. Cover failed preflight, rejected download API, immediate completion before event processing, cancelled task, worker recovery, missing native records and retry. Run `node --test tests/queue.test.js tests/preflight.test.js` and confirm source-module failure.
 
-- [ ] **2. Implement GET-based bounded preflight, not HEAD.**
+- [x] **2. Implement GET-based bounded preflight, not HEAD.**
 
 Real-platform investigation on 2026-09-11 found HEAD returns 403, but a normal authenticated GET returns a valid PPT with MIME `application/vnd.ms-powerpoint` and OLE header. Send GET with `Range: bytes=0-1023`, read at most 1024 bytes and cancel the reader/abort the request even when the server ignores Range. Do not buffer the complete file. Apply a 15-second timeout through body reading. Verify PDF `%PDF-`, legacy PPT OLE signature, or PPTX ZIP signature; reject HTML/JSON, authentication redirects, mismatched signatures, non-success status and outside-domain responses. Preflight happens only after explicit selection, including each retry.
 
-- [ ] **3. Implement persisted reservations and native downloads.**
+- [x] **3. Implement persisted reservations and native downloads.**
 
 ```js
 const downloadId = await downloads.download({
@@ -206,7 +206,7 @@ const downloadId = await downloads.download({
 
 A serialized mutation queue protects state writes. Reserve at most two queued jobs as preparing and persist before asynchronous preflight. Do not hold a mutation lock during network reads. Save startedAt before calling Chrome; save downloadId immediately after. Check the native record after creation to catch fast completion. Native completion/interruption events free slots. Reconcile bytes only while the popup asks for state; do not depend on background polling timers. On worker recovery adopt an unambiguous extension-owned matching native download created after startedAt; otherwise mark an interrupted preparing task retryable rather than blindly downloading twice. Persist request IDs for repeated-message idempotency. Native records with an unexpected final URL or HTML/JSON MIME fail, rather than being labelled valid courseware.
 
-- [ ] **4. Run queue/preflight tests, including proof that range-ignoring streams are cancelled, current-session recovery works, double clicks do not duplicate, completed files can be explicitly requested again, and no more than two slots are reserved. Commit explicit Task 3 files.**
+- [x] **4. Run queue/preflight tests, including proof that range-ignoring streams are cancelled, current-session recovery works, double clicks do not duplicate, completed files can be explicitly requested again, and no more than two slots are reserved. Commit explicit Task 3 files.**
 
 ## Task 4: Accessible popup, Chrome entry points and deterministic build
 
@@ -217,7 +217,7 @@ A serialized mutation queue protects state writes. Reserve at most two queued jo
 - `mountPopup({document, send, subscribe, activeTab})` binds UI with a cleanup function, without importing browser globals into its testable model.
 - Chrome service worker instantiates bridge and queue, registers event listeners synchronously, and routes only the contract messages above.
 
-- [ ] **1. Test selection and empty/error controls before implementation.**
+- [x] **1. Test selection and empty/error controls before implementation.**
 
 ```js
 selection.toggle('12:78:56', true);
@@ -230,7 +230,7 @@ assert.deepEqual(selection.selectedIds(), []);
 
 Also test native checkbox labels, no innerHTML insertion of file names, disabled download with no selection, download submission busy state, retry of failed jobs only, keyboard activation and selection reset after rescan. Run `node --test tests/popup.test.js` before implementing its imports.
 
-- [ ] **2. Build the compact tool interface and runtime wiring.**
+- [x] **2. Build the compact tool interface and runtime wiring.**
 
 Use a pure-white 440px popup with native system/Chinese fonts, restrained warm-red primary derived from seed hue 35°, neutral toolbars and dividers, visible focus rings, no display typography or remote assets. The course title and current-list scope lead; files occupy the main scroll area; search and PDF/PPT filters sit above it; the selected count and primary button stay at the bottom. Distinguish file format by text, not color alone. Use textContent, createElement, labelled native checkboxes, aria-live for scan/result messages, polite progress updates and reduced-motion support. A separate “下载记录” tab preserves visibility of jobs from an earlier folder.
 
@@ -238,36 +238,50 @@ A secondary small “Chrome 下载” link opens the native manager. Do not fals
 
 Wire downloads.onChanged/onErased to queue refresh; persist state in trusted session storage keys. GET_STATE validates current context and returns both scan and queue. DOWNLOAD_SELECTED obtains files from stored validated scan state, never from UI-supplied URLs. Poll native bytes while the popup is open; use storage change events for scan changes. Other browser tabs remain untouched.
 
-- [ ] **3. Build a loadable extension with a fixed asset allowlist.**
+- [x] **3. Build a loadable extension with a fixed asset allowlist.**
 
 esbuild bundles content.js as IIFE, background.js as module and popup.js as module, with no third-party runtime libraries. Copy public files and generate local PNG icons at 16/32/48/128 pixels using a standard-library PNG writer. Manifest uses only the three approved permissions and exact host. Build into dist/extension; do not recursively delete computed paths. The package test checks all required files, permissions, CSP and absence of remote scripts/debug artifacts.
 
-- [ ] **4. Run `npm test`, `npm run build`; inspect the built popup at 440px and 360px, keyboard focus, long Chinese names and all states in a real browser. Commit explicit Task 4 source/tests/scripts/public paths.**
+- [x] **4. Run `npm test`, `npm run build`; inspect the built popup at 440px and 360px, keyboard focus, long Chinese names and all states in a real browser. Commit explicit Task 4 source/tests/scripts/public paths.**
 
 ## Task 5: Real-site verification, documentation and release
 
 **Files:** Create `README.md`, `docs/verification.md`, `scripts/package.py`; update this plan with checked steps.
 
-- [ ] **1. Load dist/extension into the existing manually authenticated test Chrome.**
+- [x] **1. Load dist/extension into the existing manually authenticated test Chrome.**
 
 Use Chrome's extension page or a supported unpacked-extension debugging API; do not relaunch or export the user's cookies. Confirm the exact runtime extension ID from the loaded manifest; do not guess it. Exercise the actual popup/background/content interaction on the inspected course list. If a native file picker cannot be automated safely, ask the user for that one installation action while continuing all independent tests.
 
-- [ ] **2. Verify a small selected sample.**
+- [x] **2. Verify a small selected sample.**
 
 Scan without automatically checking any row. Compare observed names/formats to the platform. Select one PPT, submit through the real extension, observe native completion, compare the saved original signature/name and size. Keep test downloads in an explicitly named workspace test directory configured only for this independent automated browser, not the user's ordinary Chrome profile. Verify that closing/reopening the popup preserves the job and that reloading a different folder clears selection. Record actual results and untested constraints separately.
 
-- [ ] **3. Write concise installation and use documentation.**
+- [x] **3. Write concise installation and use documentation.**
 
 README explains unpacking, chrome://extensions, developer mode, loading dist/extension, pinning, logging in, opening a resource directory, scanning and selecting. Explain current-page-only scope, file naming, duplicate handling, Chrome save prompts, 15-second request timeout, metadata failures, session expiry and browser-restart limits. State that this is not an official school extension. Describe the optional bounded preflight and its potential to increment the platform download counter even before Chrome's full transfer.
 
-- [ ] **4. Create and verify the ZIP from the same build allowlist.**
+- [x] **4. Create and verify the ZIP from the same build allowlist.**
 
 Use Python zipfile; store only manifest, HTML/CSS, three bundles and the four PNG icons at the ZIP root. No source, node_modules, tests, logs, credentials or downloaded courseware. Run `npm test`, `npm run build`, `npm run package`, list ZIP contents, run `git diff --check`, and record the final test summary and remaining live-test limitations in docs/verification.md.
 
-- [ ] **5. Commit documentation and test additions; deliver absolute links to the loadable folder, ZIP and README, with a short verified-features summary.**
+- [x] **5. Commit documentation and test additions; deliver absolute links to the loadable folder, ZIP and README, with a short verified-features summary.**
 
 ## Self-review
 
 - Spec coverage: Tasks 1–2 cover scope/metadata and safe DOM; Task 3 covers durable downloads/naming/retry/auth; Task 4 covers interaction/accessibility/permissions; Task 5 covers native installation, real originals and clean distribution.
 - Interfaces: all consumers use the types and signatures listed above; popup IDs refer to stored files/jobs, not arbitrary URLs.
 - Privacy: no live page HTML, login state, real account identifiers or raw network trace is included in this plan or in distributable artifacts.
+## Recovery checkpoint — 2026-09-11
+
+- 已完成 Task 1–4，并补齐界面、构建、中文 README 和发布包；最新复核为 69 项测试通过。
+- 修复扫描代际竞态、无 URL 权限的标签页识别、Windows UTF-16 文件名、隐藏下载入口和 PDF 假标记；面板 GET_STATE 通过 bridge.getState(tabId, checkContext) 统一读取和使扫描失效，不再直接写扫描存储。
+- 在真实 Chrome 中加载实际构建，完成隔离模拟课程的三层 frame 扫描、筛选/选择、重新扫描和 360/440px 视觉检查。模拟结果不是学校真实下载验收。
+- Task 5 的第 1、2 步已完成核心验收：用户在扩展启用窗口手动登录后，真实工具栏扫描识别 11 份课件、跳过 1 个资源，并只下载 1 份 PPT。关闭/重开面板以及真实目录变更已验证；未复制或迁移登录凭据。
+- 当前结果、发布包校验和下一步实测清单见 docs/verification.md。
+
+### Live follow-through
+
+- 真实平台的 GBK 预览暴露了 UTF-8 固定解码缺陷，已改为响应 charset 解码，追加 3 项脱敏回归测试。
+- 单文件原生下载已完成，文稿流和图片流与同一服务器原件的 SHA-256 一致。整体 OLE 容器大小不同，不宣称逐字节相同，具体差异和未定位原因已记录。
+- 与原测试路径计划的偏差：CDP 测试目录未被扩展原生下载采用，样本遵循 Chrome 配置写入 E:\Download 的课程子目录；未移动、覆盖或删除其他文件，测试覆盖设置已恢复。
+- 未做 GUI 打开或真实 PDF/PPTX 全流程。以上已在交付文档中明示，不把模拟或结构验证冒充完整应用验收。

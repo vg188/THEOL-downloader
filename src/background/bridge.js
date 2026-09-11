@@ -4,6 +4,9 @@ import { courseTitle } from '../platform/parse.js';
 export function emptyScan(message = '打开课程资源目录，然后扫描当前列表') {
   return { id: '', phase: 'idle', context: null, files: [], failures: [], total: 0, processed: 0, skipped: 0, settledIds: [], message, errorCode: '' };
 }
+function sameContext(left, right) {
+  return left && right && ['tabId', 'frameId', 'documentId', 'key'].every(key => left[key] === right[key]);
+}
 export function createBridge(chrome, { readScan, writeScan }) {
   let tail = Promise.resolve();
   const serialized = work => { const task = tail.then(work); tail = task.catch(() => {}); return task; };
@@ -82,17 +85,39 @@ export function createBridge(chrome, { readScan, writeScan }) {
       await writeScan(current); return current;
     });
   }
+  async function getState(tabId, checkContext = true) {
+    if (!checkContext) return { scan: await readScan() || emptyScan() };
+    const checked = await readScan(); let page;
+    try { page = { context: (await inspect(tabId)).context }; }
+    catch (error) { page = { error: errorResult(error) }; }
+    return serialized(async () => {
+      let scan = await readScan() || emptyScan();
+      // Only the inspected generation may be invalidated; a newer scan wins.
+      if (scan.context && scan.id === checked?.id && !sameContext(scan.context, page.context)) {
+        scan = emptyScan(page.error?.message || '目录已变化，请重新扫描');
+        await writeScan(scan);
+      }
+      return { scan, page };
+    });
+  }
   async function assertCurrent(tabId, scanId) {
     const current = await readScan();
     if (!current || current.id !== scanId || current.context?.tabId !== tabId || current.phase !== 'ready') {
       throw new AppError('STALE_SCAN', '请先完成当前目录的扫描');
     }
     const { context } = await inspect(tabId);
-    if (context.key !== current.context.key || context.documentId !== current.context.documentId) {
-      await serialized(() => writeScan(emptyScan('目录已变化，请重新扫描')));
-      throw new AppError('STALE_SCAN', '目录已变化，原有选择已清空；请重新扫描');
-    }
-    return current;
+    return serialized(async () => {
+      // Inspection yields to other requests. Never submit or clear a newer scan.
+      const latest = await readScan();
+      if (!latest || latest.id !== scanId || latest.context?.tabId !== tabId || latest.phase !== 'ready') {
+        throw new AppError('STALE_SCAN', '扫描已更新，请重新选择当前列表的课件');
+      }
+      if (!sameContext(context, latest.context)) {
+        await writeScan(emptyScan('目录已变化，请重新扫描'));
+        throw new AppError('STALE_SCAN', '目录已变化，原有选择已清空；请重新扫描');
+      }
+      return latest;
+    });
   }
-  return { inspect, start, receive, assertCurrent };
+  return { inspect, start, receive, getState, assertCurrent };
 }

@@ -28,3 +28,17 @@ test('timeout includes a stalled body and cancels it', async () => {
   await assert.rejects(preflight(file(),{fetcher:async()=>response,timeoutMs:10}),e=>e.code==='TIMEOUT');
   assert.equal(cancelled,true);
 });
+
+test('HTML containing a PDF marker is still not a PDF when the MIME is incorrect', async () => {
+  const pdf = {...file(), name:'错误.pdf', extension:'pdf'};
+  await assert.rejects(preflight(pdf, {fetcher:async()=>new Response('<!DOCTYPE html><html><!-- %PDF-1.7 --><body>login</body></html>', {headers:{'content-type':'application/octet-stream'}})}), e=>e.code==='BAD_FILE');
+});
+
+
+test('PDF markers in other text or malformed headers are rejected', async () => {
+  const pdf={...file(),name:'课件.pdf',extension:'pdf'};
+  for (const body of ['login %PDF-1.7', '<!-- %PDF-1.7 -->', '%PDF-not-a-version', 'prefix\n%PDF-1.7']) {
+    await assert.rejects(preflight(pdf,{fetcher:async()=>new Response(body,{headers:{'content-type':'application/pdf'}})}),e=>e.code==='BAD_FILE');
+  }
+  assert.ok(await preflight(pdf,{fetcher:async()=>new Response('%PDF-2.0\n%binary')}));
+});
