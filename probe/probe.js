@@ -33,7 +33,8 @@ function firstPreview(document, pageUrl) {
 }
 
 const MAX_METADATA_BYTES = 64 * 1024;
-const result = { inline: true, remote: true, frame: false, metadata: false, worker: false, details: [] };
+const remoteRuntime = document.currentScript?.src === 'https://vg188.github.io/THEOL-downloader/probe/probe.js';
+const result = { inline: true, remote: remoteRuntime, frame: false, metadata: false, worker: false, details: [] };
 
 function collectFrames(root) {
   const found = [];
@@ -85,7 +86,7 @@ function render() {
   const title = document.createElement('strong'); title.textContent = 'THEOL 书签兼容性测试';
   const list = document.createElement('ul');
   for (const [key, label] of [['inline','书签内联代码'],['remote','GitHub Pages 远程脚本'],['frame','当前同源资源 frame'],['metadata','预览元数据请求'],['worker','Blob Worker']]) {
-    const item = document.createElement('li'); item.textContent = label + '：' + (result[key] ? '成功' : '失败'); list.append(item);
+    const item = document.createElement('li'); item.textContent = label + '：' + (key === 'remote' && !remoteRuntime ? '未使用（自包含）' : result[key] ? '成功' : '失败'); list.append(item);
   }
   const privacy = document.createElement('p'); privacy.textContent = '测试没有下载课件正文，也没有上传测试结果。';
   const detail = document.createElement('p'); detail.textContent = result.details.join('；'); detail.hidden = !result.details.length;

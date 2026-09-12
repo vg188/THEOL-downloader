@@ -15,6 +15,8 @@ test('probe emits a fixed-origin bookmarklet and no collection endpoint', async 
   assert.ok(bookmarklet.includes('https://vg188.github.io/THEOL-downloader/probe/probe.js')); 
   assert.doesNotMatch(bookmarklet + standalone + runtime, /sendBeacon|XMLHttpRequest|localStorage|sessionStorage/);
   assert.doesNotMatch(runtime, /download\.jsp/);
+  assert.match(runtime, /currentScript/);
+  assert.match(runtime, /未使用（自包含）/);
   assert.match(html, /id="probe-bookmarklet"/);
   assert.match(html, /id="probe-standalone"/);
   assert.doesNotMatch(html, /__PROBE_BOOKMARKLET__/);
