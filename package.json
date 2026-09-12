@@ -1,6 +1,6 @@
 {
   "name": "buct-course-downloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Local-only Chrome extension for BUCT THEOL course downloads",
@@ -10,10 +10,12 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "node scripts/build.mjs",
-    "package": "python scripts/package.py"
+    "package": "python scripts/package.py",
+    "test:browser": "node --test tests/browser/*.test.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "playwright-core": "1.63.0"
   }
 }

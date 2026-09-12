@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "北化课件助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minimum_chrome_version": "120",
   "description": "在北化 THEOL 教学平台扫描当前课件列表，勾选批量下载 PDF、PPT、PPTX 原文件。非官方、本地运行。",
   "permissions": ["scripting", "downloads", "storage"],
