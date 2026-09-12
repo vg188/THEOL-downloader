@@ -11,7 +11,9 @@
     "test": "node --test tests/*.test.js",
     "build": "node scripts/build.mjs",
     "package": "python scripts/package.py",
-    "test:browser": "node --test tests/browser/*.test.js"
+    "test:browser": "node --test tests/browser/*.test.js",
+    "build:probe": "node scripts/build-probe.mjs",
+    "test:probe": "node --test tests/probe.test.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
