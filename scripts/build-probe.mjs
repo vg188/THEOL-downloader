@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,9 +15,12 @@ export async function buildProbe() {
   const output = join(root, 'dist', 'probe');
   await rm(output, { recursive:true, force:true });
   await mkdir(output, { recursive:true });
-  await copyFile(join(root, 'probe', 'index.html'), join(output, 'index.html'));
+  const bookmarklet = createProbeBookmarklet();
+  const escapedBookmarklet = bookmarklet.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+  const html = (await readFile(join(root, 'probe', 'index.html'), 'utf8')).replace('__PROBE_BOOKMARKLET__', escapedBookmarklet);
+  await writeFile(join(output, 'index.html'), html, 'utf8');
   await build({ absWorkingDir:root, entryPoints:['probe/probe.js'], outfile:join(output,'probe.js'), bundle:true, format:'iife', target:'chrome120', platform:'browser', charset:'utf8', legalComments:'none', minify:true, sourcemap:false });
-  await writeFile(join(output, 'bookmarklet.txt'), createProbeBookmarklet() + '\n', 'utf8');
+  await writeFile(join(output, 'bookmarklet.txt'), bookmarklet + '\n', 'utf8');
   return output;
 }
 

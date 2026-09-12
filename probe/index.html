@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>THEOL 书签兼容性测试</title>
-  <style>body{max-width:720px;margin:48px auto;padding:0 20px;font:16px/1.7 system-ui;color:#171717}h1{font-size:28px}code{overflow-wrap:anywhere}.note{padding:16px;border:1px solid #ddd;border-radius:10px;background:#fafafa}</style>
+  <style>body{max-width:720px;margin:48px auto;padding:0 20px;font:16px/1.7 system-ui;color:#171717}h1{font-size:28px}code{overflow-wrap:anywhere}.note{padding:16px;border:1px solid #ddd;border-radius:10px;background:#fafafa}.install{display:inline-block;margin:18px 0;padding:11px 16px;border-radius:8px;background:#b32b16;color:white;text-decoration:none;font-weight:700}.steps{padding-left:20px}</style>
 </head>
 <body>
   <h1>THEOL 书签兼容性测试</h1>
   <p>此测试用于确认课程页面能否运行轻量版书签程序。</p>
   <div class="note"><strong>隐私边界：</strong>测试仅读取一份预览元数据页面，不会下载课件正文，不会上传页面内容、文件名、账号信息或测试结果。</div>
-  <p>构建后请将 <code>bookmarklet.txt</code> 的完整内容保存为书签网址，再在已登录的当前课程资源目录点击。</p>
+  <ol class="steps"><li>按 <code>Ctrl+Shift+B</code> 显示书签栏。</li><li>把下面按钮拖到书签栏。</li><li>打开已登录的 THEOL 当前课件目录，点击该书签。</li></ol>
+  <p><a id="probe-bookmarklet" class="install" href="__PROBE_BOOKMARKLET__">拖到书签栏：兼容性测试</a></p>
+  <p>测试完成后，只需告诉开发者五项结果是“成功”还是“失败”，不要发送课程名、文件名、页面源码或账号信息。</p>
 </body>
 </html>
