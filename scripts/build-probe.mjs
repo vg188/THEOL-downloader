@@ -21,6 +21,12 @@ export async function buildProbe() {
   await writeFile(join(output, 'index.html'), html, 'utf8');
   await build({ absWorkingDir:root, entryPoints:['probe/probe.js'], outfile:join(output,'probe.js'), bundle:true, format:'iife', target:'chrome120', platform:'browser', charset:'utf8', legalComments:'none', minify:true, sourcemap:false });
   await writeFile(join(output, 'bookmarklet.txt'), bookmarklet + '\n', 'utf8');
+  const runtime = await readFile(join(output, 'probe.js'), 'utf8');
+  const standalone = 'javascript:' + runtime;
+  await writeFile(join(output, 'bookmarklet-self-contained.txt'), standalone + '\n', 'utf8');
+  const standaloneEscaped = standalone.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+  const installedHtml = (await readFile(join(output, 'index.html'), 'utf8')).replace('__PROBE_STANDALONE__', standaloneEscaped);
+  await writeFile(join(output, 'index.html'), installedHtml, 'utf8');
   return output;
 }
 
