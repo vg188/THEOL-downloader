@@ -8,12 +8,12 @@
 </head>
 <body>
   <h1>THEOL 书签兼容性测试</h1>
-  <p>此测试用于确认课程页面能否运行轻量版书签程序。</p>
-  <div class="note"><strong>隐私边界：</strong>测试仅读取一份预览元数据页面，不会下载课件正文，不会上传页面内容、文件名、账号信息或测试结果。</div>
-  <ol class="steps"><li>按 <code>Ctrl+Shift+B</code> 显示书签栏。</li><li>把下面按钮拖到书签栏。</li><li>打开已登录的 THEOL 当前课件目录，点击该书签。</li></ol>
+  <p>此测试用于确认“单元学习”页面能否运行轻量版书签程序。</p>
+  <div class="note"><strong>隐私边界：</strong>测试至多读取一份页面中已经存在的规范预览元数据页面（最多 64 KiB），不会请求下载地址或课件正文，也不会上传、收集、存储或复制任何内容。</div>
+  <ol class="steps"><li>按 <code>Ctrl+Shift+B</code> 显示书签栏，把下面的“自包含测试”拖到书签栏。</li><li>打开已登录的 THEOL“单元学习”，展开一个明显含有课件的单元。</li><li>运行书签，点击浮层中的“捕获下一次单元点击”。</li><li>只点击一次另一个可见单元；测试会拦截这次点击，页面不会跳转。</li><li>只发送测试浮层的截图。</li></ol>
   <p><a id="probe-bookmarklet" class="install" href="__PROBE_BOOKMARKLET__">远程加载测试</a></p>
   <p><strong>若远程加载失败：</strong>请删除刚才的测试书签，再把下面的自包含测试拖到书签栏运行。它不加载 GitHub 脚本。</p>
   <p><a id="probe-standalone" class="install" href="__PROBE_STANDALONE__">拖到书签栏：自包含测试</a></p>
-  <p>测试完成后，只需告诉开发者五项结果是“成功”还是“失败”，不要发送课程名、文件名、页面源码或账号信息。</p>
+  <p><strong>禁止发送：</strong>DevTools 输出、页面源码、完整 URL、查询参数值、课程名、单元名、文件名、任何 ID、账号或凭据、响应正文。不要发送浮层之外的页面内容。</p>
 </body>
 </html>
