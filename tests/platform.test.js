@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseDirectory, parsePreview, courseTitle } from '../src/platform/parse.js';
 import { buildFilename, normalizeResourceUrl, validateFile } from '../src/platform/policy.js';
-import { dom, listUrl, previewUrl, resource, preview, file } from './helpers/dom.js';
-
+import { parseUnitPage, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
+import { dom, listUrl, previewUrl, resource, preview, file, unitEntryUrl, unitPageUrl } from './helpers/dom.js';
 const code = value => error => error.code === value;
 test('list with extensionless names resolves actual PPT metadata', () => {
   const directory = parseDirectory(dom('<a href="preview/download_preview.jsp?fileid=56&resid=78&lid=12">第一章</a>'), listUrl);
@@ -113,4 +113,74 @@ test('download controls in unavailable ancestors are skipped without hiding elig
 test('hidden list ancestors do not become scanned resources', () => {
   const html = '<div style="display:none"><a href="' + previewUrl() + '">隐藏</a></div>';
   assert.equal(parseDirectory(dom(html), listUrl).resources.length, 0);
+});
+
+const unitAnchor = (n = 56, lid = 12) => `<a href="/meol/common/script/preview/download_preview.jsp?fileid=${n}&resid=${n + 22}&lid=${lid}">第${n}份</a>`;
+test('unit entry canonicalizes to exact columnId and tagbug order', () => {
+  assert.deepEqual(normalizeUnitEntryUrl(unitEntryUrl(44)), {
+    columnId: '44',
+    url: 'https://course.buct.edu.cn/meol/jpk/course/course_column_preview_transfer.jsp?columnId=44&tagbug=client',
+  });
+});
+for (const value of [
+  unitEntryUrl().replace('https://', 'http://'),
+  unitEntryUrl().replace('course.buct.edu.cn', 'evil.test'),
+  unitEntryUrl() + '&columnId=45',
+  unitEntryUrl().replace('columnId=41', 'columnId=-1'),
+  unitEntryUrl().replace('tagbug=client', 'tagbug=server'),
+  unitEntryUrl().replace('course_column_preview_transfer.jsp', 'resFolderViewList.do'),
+  unitEntryUrl().replace('columnId=41', 'columnId='),
+  unitEntryUrl() + '#fragment',
+]) test(`rejects unsafe unit entry: ${value}`, () => {
+  assert.throws(() => normalizeUnitEntryUrl(value));
+});
+test('unit pages canonicalize for both layouts and match expected course', () => {
+  for (const layout of ['lesson', 'newpage']) {
+    assert.deepEqual(normalizeUnitPageUrl(unitPageUrl(layout), '12'), {
+      courseId: '12',
+      url: `https://course.buct.edu.cn/meol/jpk/course/layout/${layout}/index.jsp?courseId=12`,
+      layout,
+    });
+  }
+});
+for (const value of [
+  unitPageUrl().replace('/lesson/', '/other/'),
+  unitPageUrl() + '&courseId=13',
+  unitPageUrl().replace('courseId=12', 'courseId='),
+  unitPageUrl().replace('https://', 'https://user:password@'),
+  unitPageUrl() + '#section',
+  'https://course.buct.edu.cn/meol/jpk/course/course_column_preview_transfer.jsp?tagbug=client&columnId=41',
+]) test(`rejects unsafe unit page: ${value.replace(/password/g, 'redacted')}`, () => {
+  assert.throws(() => normalizeUnitPageUrl(value, '12'));
+});
+test('unit page with wrong course is rejected against expected courseId', () => {
+  assert.throws(() => normalizeUnitPageUrl(unitPageUrl('lesson', 13), '12'), code('INVALID_RESOURCE'));
+});
+test('current unit page collects only matching-course preview anchors', () => {
+  for (const layout of ['lesson', 'newpage']) {
+    const document = dom(`${unitAnchor(56)}${unitAnchor(57)}${unitAnchor(58, 99)}`);
+    const unit = parseUnitPage(document, unitPageUrl(layout));
+    assert.equal(unit.surface, 'unit-study');
+    assert.equal(unit.layout, layout);
+    assert.deepEqual(unit.resources.map(item => item.id), ['12:78:56', '12:79:57']);
+    assert.deepEqual(unit.resources[0].unit, { entryUrl: null, title: '当前单元', order: 0, occurrenceCount: 1 });
+  }
+});
+test('hidden or disabled unit anchors and duplicates are ignored', () => {
+  for (const attributes of ['hidden', 'inert', 'disabled', 'aria-hidden="true"', 'aria-disabled="true"', 'style="display:none"', 'style="visibility:collapse"']) {
+    const html = `<span ${attributes}>${unitAnchor(56)}</span>${unitAnchor(56)}${unitAnchor(57)}`;
+    assert.deepEqual(parseUnitPage(dom(html), unitPageUrl()).resources.map(item => item.id), ['12:78:56', '12:79:57']);
+    assert.deepEqual(parseUnitPage(dom(`<span ${attributes}>${unitAnchor(56)}</span>${unitAnchor(57)}`), unitPageUrl()).resources.map(item => item.id), ['12:79:57']);
+  }
+});
+test('unit page keeps first duplicate and safe title text', () => {
+  const document = dom(`<a href="/meol/common/script/preview/download_preview.jsp?fileid=56&resid=78&lid=12">  第一 份 <img onerror=alert(1) src=x> </a>`);
+  const unit = parseUnitPage(document, unitPageUrl());
+  assert.equal(unit.resources.length, 1);
+  assert.equal(unit.resources[0].title, '第一 份');
+});
+test('unit page with no valid anchors returns empty resources, non-unit URL returns null', () => {
+  const document = dom(`<a href="${unitEntryUrl()}">栏目</a><a href="https://course.buct.edu.cn/meol/buildless/resFolderViewList.do?columnId=41">文件夹</a>`);
+  assert.deepEqual(parseUnitPage(document, unitPageUrl()).resources, []);
+  assert.equal(parseUnitPage(document, listUrl), null);
 });

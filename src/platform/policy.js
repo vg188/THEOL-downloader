@@ -34,6 +34,16 @@ export function numericParam(url, key, allowZero = false) {
   }
   return values[0];
 }
+
+export function isUnavailable(element) {
+  for (let node = element; node; node = node.parentElement) {
+    if (['hidden', 'inert', 'disabled'].some(name => node.hasAttribute(name)) ||
+        ['aria-hidden', 'aria-disabled'].some(name => node.getAttribute(name)?.trim().toLowerCase() === 'true') ||
+        node.style?.display.toLowerCase() === 'none' ||
+        ['hidden', 'collapse'].includes(node.style?.visibility.toLowerCase())) return true;
+  }
+  return false;
+}
 export function normalizeResourceUrl(input, kind, base = ORIGIN) {
   const url = schoolUrl(input, base);
   if (!['preview', 'download'].includes(kind) || pathWithoutSession(url.pathname) !== PATHS[kind]) {

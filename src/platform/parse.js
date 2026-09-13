@@ -1,14 +1,4 @@
-import { AppError, ORIGIN, PATHS, pathWithoutSession, schoolUrl, numericParam, normalizeResourceUrl, extensionOf, FORMATS } from './policy.js';
-
-function isUnavailable(element) {
-  for (let node = element; node; node = node.parentElement) {
-    if (['hidden', 'inert', 'disabled'].some(name => node.hasAttribute(name)) ||
-        ['aria-hidden', 'aria-disabled'].some(name => node.getAttribute(name)?.trim().toLowerCase() === 'true') ||
-        node.style?.display.toLowerCase() === 'none' ||
-        ['hidden', 'collapse'].includes(node.style?.visibility.toLowerCase())) return true;
-  }
-  return false;
-}
+import { AppError, ORIGIN, PATHS, isUnavailable, pathWithoutSession, schoolUrl, numericParam, normalizeResourceUrl, extensionOf, FORMATS } from './policy.js';
 
 export function parseDirectory(document, pageUrl) {
   let url, courseId, folderId;
