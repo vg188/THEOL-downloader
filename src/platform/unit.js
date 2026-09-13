@@ -83,7 +83,12 @@ export function parseUnitPageFrames(rootWindow, pageUrl) {
   if (!page) return null;
   const resources = page.resources, seen = new Set(resources.map(resource => resource.id));
   let frames = 0;
-  for (const child of rootWindow.frames ?? []) {
+  // `window.frames` is the window proxy itself, not an array: it has a length and
+  // numeric indices but no iterator, so it must be walked by index.
+  const children = rootWindow.frames;
+  for (let index = 0; index < (children?.length ?? 0); index++) {
+    const child = children[index];
+    if (!child) continue;
     let childDocument, childUrl;
     try {
       childDocument = child.document;

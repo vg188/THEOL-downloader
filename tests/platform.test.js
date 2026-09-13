@@ -249,10 +249,9 @@ test('unit page with no valid anchors returns empty resources, non-unit URL retu
 test('unit surface aggregates courseware rendered by nested same-origin frames', () => {
   const window = {
     document: dom(unitAnchor(56)),
-    frames: [
-      { document: dom(`${unitAnchor(56)}${unitAnchor(57)}`), location: { href: listUrl } },
-      { document: dom(unitAnchor(58, 99)), location: { href: listUrl } },
-    ],
+    // `window.frames` has a length and indices but no iterator, so the walk must
+    // never rely on iteration.
+    frames: { 0: { document: dom(`${unitAnchor(56)}${unitAnchor(57)}`), location: { href: listUrl } }, 1: { document: dom(unitAnchor(58, 99)), location: { href: listUrl } }, length: 2 },
   };
   const unit = parseUnitPageFrames(window, unitPageUrl());
   assert.deepEqual(unit.resources.map(item => item.id), ['12:78:56', '12:79:57']);
