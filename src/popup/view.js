@@ -5,8 +5,11 @@ const LABELS = {queued:'排队中',preparing:'校验中',downloading:'下载中'
 export async function mountPopup({ document, send, subscribe = () => () => {}, activeTab }) {
   const $ = id => document.getElementById(id);
   const selection = createSelection(), fileRows = new Map(), jobRows = new Map(), disposers = [];
-  let state = { scan: {id:'',phase:'idle',files:[],failures:[],total:0,processed:0,skipped:0}, queue:{jobs:[]}, page:{} };
+  let state = { scan: {id:'',phase:'idle',files:[],failures:[],unitFailures:[],total:0,processed:0,skipped:0,units:{processed:0,total:0,discovered:0}}, queue:{jobs:[]}, page:{} };
   let tab = 'files', format = 'all', query = '', pending = false, destroyed = false;
+  // The range control is local panel state: current is the safe default on
+  // every mount, and only the panel's own submission may select all.
+  let mode = 'current', committed = 'current', contextKey = '', dialogOpen = false, dialogReturn = null;
   let refreshPromise, queuedRefresh = false, queuedCheck = false;
   const text = (node,value) => { const next=String(value ?? ''); if(node.textContent !== next) node.textContent=next; };
   function make(tag,className,content) { const node=document.createElement(tag); if(className)node.className=className; if(content!=null)text(node,content);return node; }
@@ -14,9 +17,13 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
   function notify(message='') { text($('notice'),message);$('notice').hidden=!message; }
   async function request(message) { const reply=await send(message); if(!reply?.ok)throw new Error(reply?.error?.message || '扩展暂时不可用，请关闭面板后重试');return reply.data; }
   function apply(data) {
-    if(data.scan){state.scan=data.scan;selection.reset(`${data.scan.id}|${data.scan.context?.key || ''}`);}
+    if(data.scan)state.scan=data.scan;
     if(data.queue)state.queue=data.queue;
     if(data.page)state.page=data.page;
+    // A changed inspection generation invalidates a pending range choice: the
+    // confirmation closes and the safe default returns.
+    const key=(state.page.context || state.scan.context)?.key || '';
+    if(key!==contextKey){contextKey=key;mode=committed='current';closeDialog();}
   }
   async function action(work) {
     if(pending)return;pending=true;notify();render();
@@ -32,13 +39,47 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
       if(list.children[index]!==row)list.insertBefore(row,list.children[index] || null);
     });
   }
+  function openDialog() {
+    if(dialogOpen)return;
+    const dialog=$('all-units-dialog');
+    // The count comes from the inspected surface, never from visible copy.
+    text($('all-units-copy'),`将读取当前课程的 ${state.page.surface?.unitIndex?.entries?.length || 0} 个单元页面，不会下载课件正文`);
+    dialogOpen=true;dialogReturn=document.activeElement;
+    dialog.hidden=false;
+    let modal=false;
+    if(typeof dialog.showModal === 'function'){try{dialog.showModal();modal=true;}catch{modal=false;}}
+    if(!modal)$('all-units-cancel').focus();
+    render();
+  }
+  function closeDialog() {
+    const dialog=$('all-units-dialog');
+    if(typeof dialog.close === 'function' && dialog.open)dialog.close();
+    dialog.hidden=true;
+    if(!dialogOpen)return;
+    dialogOpen=false;
+    const target=dialogReturn;dialogReturn=null;
+    render();target?.focus?.();
+  }
+  function cancelDialog() { mode=committed;closeDialog(); }
+  async function submitScan(nextMode) {
+    await action(async()=>{
+      selection.clear();
+      const scan=await request({type:'START_SCAN',tabId:activeTab,mode:nextMode});
+      // This replacement came from the panel itself, so its own context is not
+      // a context change; the next refresh re-inspects the page anyway.
+      contextKey=scan.context?.key || '';
+      apply({scan,page:{...state.page,context:scan.context}});
+      committed=mode=nextMode;
+      closeDialog();
+    });
+  }
   function createFile(file) {
     const row=make('li','file-row');row.dataset.id=file.id;
     const label=make('label'), checkbox=make('input');checkbox.type='checkbox';checkbox.setAttribute('aria-label',`选择 ${file.name}`);
     checkbox.addEventListener('change',()=>{selection.toggle(file.id,checkbox.checked);render();});
     const icon=make('span','format-icon',file.extension.toUpperCase());icon.dataset.extension=file.extension;icon.setAttribute('aria-hidden','true');
     const copy=make('span','file-copy'), name=make('span','file-name',file.name), meta=make('span','file-meta');name.title=file.name;
-    const status=make('span','file-status');copy.append(name,meta,status);label.append(checkbox,icon,copy);row.append(label);
+    const status=make('span','file-status'), unit=make('span','file-unit');copy.append(name,meta,status,unit);label.append(checkbox,icon,copy);row.append(label);
     return row;
   }
   function createJob(job) {
@@ -60,12 +101,28 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
     const scan=state.scan, files=scan.files || [], jobs=state.queue.jobs || [];
     const busy=new Set(jobs.filter(j=>ACTIVE.has(j.status)).map(j=>j.file.id));
     for(const id of busy)selection.toggle(id,false);
+    const context=state.page.context || scan.context || null, surface=context?.surface;
+    // Available ranges come from the inspected page contract, never from copy.
+    const modes=(context?.modeOptions || []).filter(value=>value==='current' || value==='all');
+    if(!modes.includes(mode))mode=committed='current';
+    // The selection belongs to one scan generation of one page range.
+    selection.reset(`${scan.id}|${contextKey}|${mode}`);
     const shown=selection.visible(files,query,format), selectable=shown.filter(f=>!busy.has(f.id));
     const selected=new Set(selection.selectedIds()), course=state.page.context?.courseName || scan.context?.courseName;
     const scanning=scan.phase==='scanning', canChoose=scan.phase==='ready' && !state.page.error;
+    const showMode=surface==='unit-study' && modes.length>0, modeSelect=$('scan-mode');
     text($('course-name'),course || '等待课程页面');$('course-name').title=course || '';
-    text($('scope-copy'),'只扫描当前已加载的列表');
-    $('scan-button').disabled=pending || scanning || !state.page.context || Boolean(state.page.error);
+    text($('scope-copy'),surface==='unit-study' ? (mode==='all' ? '将扫描全部单元' : '只扫描当前单元') : surface==='resource-directory' ? '只扫描当前目录' : '只扫描当前已加载的列表');
+    const optionsKey=`${surface || ''}|${modes.join(',')}`;
+    if(modes.length && modeSelect.dataset.options!==optionsKey){
+      modeSelect.replaceChildren(...modes.map(value=>{
+        const option=document.createElement('option');option.value=value;
+        text(option,value==='all' ? '全部单元' : surface==='unit-study' ? '当前单元' : '当前目录');return option;
+      }));
+      modeSelect.dataset.options=optionsKey;
+    }
+    modeSelect.value=mode;modeSelect.disabled=pending || scanning || dialogOpen;modeSelect.hidden=!showMode;$('scan-mode-row').hidden=!showMode;
+    $('scan-button').disabled=pending || scanning || !context || Boolean(state.page.error);
     text($('scan-label'),scanning ? '扫描中…' : scan.id ? '重新扫描' : '扫描课件');
     text($('files-count'),files.length);text($('jobs-count'),jobs.length);
     for(const kind of ['files','history']) {
@@ -76,19 +133,27 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
     const all=$('select-all');all.disabled=!canChoose || !selectable.length || pending;
     all.checked=selectable.length>0 && selectable.every(f=>selected.has(f.id));
     all.indeterminate=!all.checked && selectable.some(f=>selected.has(f.id));
-    text($('scan-status'),scanning ? `${scan.processed || 0} / ${scan.total || 0} 正在识别` : scan.phase==='ready' ? `${files.length} 份课件${scan.skipped ? ` · 跳过 ${scan.skipped}` : ''}` : scan.phase==='error' ? '扫描未完成' : '尚未扫描');
-    $('scan-progress').hidden=!scanning;$('scan-progress').max=Math.max(scan.total || 0,1);$('scan-progress').value=scan.processed || 0;
+    // Unit collection reports display-only counters before metadata starts.
+    const units=scan.units || {};
+    const collecting=scanning && context?.mode==='all' && units.total>0 && (units.processed<units.total || !scan.total);
+    text($('scan-status'),collecting ? `正在读取单元 ${units.processed || 0} / ${units.total}，已发现 ${units.discovered || 0} 个候选` : scanning ? `正在识别课件 ${scan.processed || 0} / ${scan.total || 0}` : scan.phase==='ready' ? `${files.length} 份课件${scan.skipped ? ` · 跳过 ${scan.skipped}` : ''}` : scan.phase==='error' ? '扫描未完成' : '尚未扫描');
+    $('scan-progress').hidden=!scanning;$('scan-progress').max=Math.max(collecting ? units.total : scan.total || 0,1);$('scan-progress').value=collecting ? units.processed || 0 : scan.processed || 0;
     reconcile($('file-list'),fileRows,shown,createFile,(row,file)=>{
       const activeJob=[...jobs].reverse().find(j=>j.file.id===file.id && j.status!=='failed');
       row.classList.toggle('selected',selected.has(file.id));row.classList.toggle('busy',busy.has(file.id));
       const checkbox=row.querySelector('input');checkbox.checked=selected.has(file.id);checkbox.disabled=!canChoose || pending || busy.has(file.id);
       text(row.querySelector('.file-meta'),`${file.extension.toUpperCase()} · ${file.sizeText}`);
       text(row.querySelector('.file-status'),activeJob ? LABELS[activeJob.status] : '');
+      // Unit metadata is optional; the current-unit pseudo unit (entryUrl null)
+      // names the page the user is already on, so only enumerated units show.
+      const unit=file.unit?.entryUrl ? file.unit : null, unitNode=row.querySelector('.file-unit');
+      text(unitNode,unit ? `所属单元 ${unit.title}${unit.occurrenceCount>1 ? ` · 另见 ${unit.occurrenceCount-1} 个单元` : ''}` : '');
+      unitNode.hidden=!unit;
     });
     $('empty-state').hidden=shown.length>0;
     let title='先扫描，再挑选', description='进入课程资源目录，点击“扫描课件”。扫描不会自动下载文件。';
     if(state.page.error){title='先打开课件目录';description=state.page.error.message;}
-    else if(scanning){title='正在读取课件信息';description='正在核对原文件名和下载入口，请稍候。';}
+    else if(scanning){title=collecting ? '正在读取单元页面' : '正在读取课件信息';description='正在核对原文件名和下载入口，请稍候。';}
     else if(scan.phase==='error'){title='这次扫描没有完成';description=scan.message || '请重新扫描当前列表。';}
     else if(scan.phase==='ready' && files.length){title='没有匹配的课件';description='换个关键词，或切换到“全部”格式。已选的其他文件会保留。';}
     else if(scan.phase==='ready'){title=scan.failures?.length?'暂时没能识别课件':'这个目录没有课件';description=scan.failures?.length?'请查看下方原因，确认登录状态后重新扫描。':'首版只读取当前列表。请进入包含 PDF 或 PPT 的子目录后重新扫描。';}
@@ -97,6 +162,11 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
     const failureList=$('failure-list');
     const failureKey=JSON.stringify(failures);
     if(failureList.dataset.key!==failureKey){failureList.replaceChildren(...failures.map(f=>make('li','',`${f.title}：${f.message}`)));failureList.dataset.key=failureKey;}
+    // Unit-read failures stay a local group beside the metadata failures.
+    const unitFailures=scan.unitFailures || [];$('unit-failures').hidden=!unitFailures.length;text($('unit-failure-summary'),`${unitFailures.length} 个单元未能读取`);
+    const unitList=$('unit-failure-list');
+    const unitKey=JSON.stringify(unitFailures);
+    if(unitList.dataset.key!==unitKey){unitList.replaceChildren(...unitFailures.map(f=>make('li','',`${f.title}：${f.message}`)));unitList.dataset.key=unitKey;}
     const running=jobs.filter(j=>ACTIVE.has(j.status)).length, complete=jobs.filter(j=>j.status==='complete').length;
     text($('history-summary'),jobs.length?`${running} 项进行中 · ${complete} 项已完成`:'本次浏览器会话的下载记录');
     $('retry-all').disabled=pending || !jobs.some(j=>j.status==='failed');$('history-empty').hidden=jobs.length>0;
@@ -131,9 +201,14 @@ export async function mountPopup({ document, send, subscribe = () => () => {}, a
     await refreshPromise;refreshPromise=null;
     if(queuedRefresh){const next=queuedCheck;queuedRefresh=false;queuedCheck=false;void refresh(next);}
   }
-  listen($('scan-button'),'click',()=>action(async()=>{
-    selection.clear();const scan=await request({type:'START_SCAN',tabId:activeTab});apply({scan,page:{context:scan.context}});
-  }));
+  listen($('scan-button'),'click',()=>{
+    if(mode==='all'){openDialog();return;}
+    void submitScan('current');
+  });
+  listen($('scan-mode'),'change',event=>{mode=event.target.value==='all' ? 'all' : 'current';render();});
+  listen($('all-units-confirm'),'click',()=>{void submitScan('all');});
+  listen($('all-units-cancel'),'click',()=>cancelDialog());
+  listen($('all-units-dialog'),'cancel',event=>{event.preventDefault();cancelDialog();});
   listen($('search-input'),'input',event=>{query=event.target.value;render();});
   for(const button of document.querySelectorAll('[data-format]'))listen(button,'click',()=>{format=button.dataset.format;render();});
   listen($('select-all'),'change',event=>{

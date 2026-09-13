@@ -23,6 +23,12 @@
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 6a7 7 0 1 0 1 7M16 2v5h-5"/></svg><span id="scan-label">扫描课件</span>
       </button>
     </div>
+    <div id="scan-mode-row" class="scan-mode-row" hidden>
+      <label for="scan-mode">扫描范围</label>
+      <select id="scan-mode" hidden>
+        <option value="current">当前目录</option>
+      </select>
+    </div>
   </header>
   <nav class="tabs" role="tablist" aria-label="课件与下载记录">
     <button id="files-tab" type="button" role="tab" aria-selected="true" aria-controls="files-panel" tabindex="0">课件列表<span id="files-count" class="count">0</span></button>
@@ -43,6 +49,7 @@
         <h3 id="empty-title">先扫描，再挑选</h3><p id="empty-copy">进入课程资源目录，点击“扫描课件”。扫描不会自动下载文件。</p>
         <div id="skeleton" class="skeleton" aria-hidden="true" hidden><i></i><i></i><i></i></div>
       </div>
+      <details id="unit-failures" class="failures" hidden><summary id="unit-failure-summary"></summary><ul id="unit-failure-list"></ul></details>
       <details id="scan-failures" class="failures" hidden><summary id="failure-summary"></summary><ul id="failure-list"></ul></details>
     </div>
   </section>
@@ -56,5 +63,13 @@
     <p id="save-hint" class="save-hint">保存到 Chrome 下载目录 / 课程名</p>
   </footer>
 </main>
+<dialog id="all-units-dialog" aria-labelledby="all-units-title" aria-describedby="all-units-copy" hidden>
+  <h2 id="all-units-title">扫描全部单元？</h2>
+  <p id="all-units-copy" class="dialog-copy"></p>
+  <div class="dialog-actions">
+    <button id="all-units-cancel" class="button" type="button" autofocus>取消</button>
+    <button id="all-units-confirm" class="button primary" type="button">确认扫描</button>
+  </div>
+</dialog>
 </body>
 </html>
