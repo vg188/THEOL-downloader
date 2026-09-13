@@ -1,11 +1,7 @@
 import { AppError, validateFile, normalizeResourceUrl, isUnsafeMime } from '../platform/policy.js';
+import { hasFileSignature, readBodySample } from '../platform/file-content.js';
 import { withDeadline } from '../platform/network.js';
 
-function hasSignature(bytes, extension) {
-  if (extension === 'pdf') return /^%PDF-\d\.\d(?:[\r\n\t ]|$)/.test(new TextDecoder('latin1').decode(bytes));
-  const signature = extension === 'ppt' ? [0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1] : [0x50,0x4b,0x03,0x04];
-  return signature.every((value,index) => bytes[index] === value);
-}
 export async function preflight(input, { fetcher = globalThis.fetch, timeoutMs = 15000 } = {}) {
   const file = validateFile(input);
   try {
@@ -21,21 +17,8 @@ export async function preflight(input, { fetcher = globalThis.fetch, timeoutMs =
       const mime = response.headers.get('content-type') || '';
       if (isUnsafeMime(mime)) throw new AppError('BAD_FILE', '平台返回了网页而非课件，请重新登录或确认下载权限');
       if (!response.body) throw new AppError('BAD_FILE', '平台返回了空文件');
-      const reader = response.body.getReader();
-      const abortReader = () => { void reader.cancel().catch(() => {}); };
-      signal.addEventListener('abort', abortReader, { once: true });
-      const sample = new Uint8Array(1024); let length = 0;
-      try {
-        while (length < sample.length) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value?.length) { const chunk = value.subarray(0, sample.length-length); sample.set(chunk,length); length += chunk.length; }
-        }
-      } finally {
-        signal.removeEventListener('abort', abortReader);
-        await reader.cancel().catch(() => {});
-      }
-      if (!hasSignature(sample.subarray(0,length), file.extension)) throw new AppError('BAD_FILE', '文件内容与格式不符，已停止下载；请在平台确认原文件');
+      const sample = await readBodySample(response, { maxBytes: 1024, signal });
+      if (!hasFileSignature(sample, file.extension)) throw new AppError('BAD_FILE', '文件内容与格式不符，已停止下载；请在平台确认原文件');
       return { mime: mime.split(';')[0].trim() };
     }, { timeoutMs });
   } catch (error) {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseDirectory, parsePreview, courseTitle } from '../src/platform/parse.js';
 import { buildFilename, normalizeResourceUrl, validateFile } from '../src/platform/policy.js';
+import { parseSize, hasFileSignature, readBodySample } from '../src/platform/file-content.js';
 import { parseUnitPage, parseUnitIndex, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
 import { dom, listUrl, previewUrl, resource, preview, file, unitEntryUrl, unitPageUrl } from './helpers/dom.js';
 const code = value => error => error.code === value;
@@ -42,6 +43,66 @@ test('preview preserves filename parentheses and spaces, permits missing size', 
   assert.equal(parsed.sizeText, '大小未知');
   assert.equal(parsed.extension, 'pptx');
   assert.equal(parsePreview(dom(preview('第1章.PDF')), resource()).extension, 'pdf');
+});
+test('preview reports the displayed size as bytes as well as text', () => {
+  assert.equal(parsePreview(dom(preview('A.pdf', 56, '9.1M')), resource()).sizeBytes, Math.round(9.1 * 1024 * 1024));
+  const spaced = parsePreview(dom(preview('B.ppt', 56, '1.5 M')), resource());
+  assert.equal(spaced.sizeText, '1.5M');
+  assert.equal(spaced.sizeBytes, Math.round(1.5 * 1024 * 1024));
+  const unknown = parsePreview(dom(preview('章节 (修订版).pptx', 56, '')), resource());
+  assert.equal(unknown.sizeText, '大小未知');
+  assert.equal(unknown.sizeBytes, null);
+});
+test('size text parses binary units and rejects unknown or malformed values', () => {
+  assert.equal(parseSize('500MB'), 500 * 1024 * 1024);
+  assert.equal(parseSize('1.5M'), Math.round(1.5 * 1024 * 1024));
+  assert.equal(parseSize('1024 字节'), 1024);
+  assert.equal(parseSize('大小未知'), null);
+  for (const [text, bytes] of [
+    ['0B', 0], ['512 b', 512], ['2K', 2 * 1024], ['2 KB', 2 * 1024], ['2 KiB', 2 * 1024],
+    ['3 mib', 3 * 1024 ** 2], ['4G', 4 * 1024 ** 3], ['4GB', 4 * 1024 ** 3], ['5TiB', 5 * 1024 ** 4],
+  ]) assert.equal(parseSize(text), bytes, text);
+  for (const value of ['', '   ', '-1M', '1.2.3M', 'M', '1PB', '9.1M 左右', '99999999999999999999T', 1024, null, undefined]) {
+    assert.equal(parseSize(value), null, String(value));
+  }
+});
+test('original-file signatures are matched byte-wise', () => {
+  const text = value => new TextEncoder().encode(value);
+  assert.equal(hasFileSignature(text('%PDF-1.7\n1234'), 'pdf'), true);
+  assert.equal(hasFileSignature(text('%PDF-2.0'), 'pdf'), true);
+  for (const body of ['', 'login %PDF-1.7', '<!-- %PDF-1.7 -->', '%PDF-not-a-version', 'prefix\n%PDF-1.7']) {
+    assert.equal(hasFileSignature(text(body), 'pdf'), false, body);
+  }
+  assert.equal(hasFileSignature(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), 'ppt'), true);
+  assert.equal(hasFileSignature(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0x00]), 'ppt'), false);
+  assert.equal(hasFileSignature(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), 'pptx'), true);
+  assert.equal(hasFileSignature(new Uint8Array(0), 'pptx'), false);
+});
+test('body samples keep short streams and stop at the byte budget', async () => {
+  const short = await readBodySample(new Response(new Uint8Array([1, 2, 3])), { maxBytes: 8 });
+  assert.deepEqual([...short], [1, 2, 3]);
+  assert.equal((await readBodySample(new Response(null))).length, 0);
+  let cancelled = false;
+  const block = new Uint8Array(64).fill(0xab);
+  const response = new Response(new ReadableStream({
+    start(controller) { controller.enqueue(block); controller.enqueue(block); },
+    cancel() { cancelled = true; },
+  }));
+  const sample = await readBodySample(response, { maxBytes: 100 });
+  assert.equal(sample.length, 100);
+  assert.ok(sample.every(value => value === 0xab));
+  assert.equal(cancelled, true);
+});
+test('an already aborted signal cancels body sampling without reading', async () => {
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array([7, 8])); },
+    cancel() { cancelled = true; },
+  }));
+  const aborted = new AbortController();
+  aborted.abort();
+  assert.equal((await readBodySample(response, { maxBytes: 64, signal: aborted.signal })).length, 0);
+  assert.equal(cancelled, true);
 });
 test('preview cannot invent download links or mix resource IDs', () => {
   assert.throws(() => parsePreview(dom('<h2>文件名:A.ppt</h2>'), resource()), code('NO_DOWNLOAD'));

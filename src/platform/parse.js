@@ -1,4 +1,5 @@
 import { AppError, ORIGIN, PATHS, isUnavailable, pathWithoutSession, schoolUrl, numericParam, normalizeResourceUrl, extensionOf, FORMATS } from './policy.js';
+import { parseSize } from './file-content.js';
 
 export function parseDirectory(document, pageUrl) {
   let url, courseId, folderId;
@@ -40,6 +41,7 @@ export function parsePreview(document, resource) {
   let name = copy.textContent.split(/文件名\s*[:：]/).slice(1).join('文件名:').trim();
   const size = name.match(/[（(]\s*(\d+(?:\.\d+)?\s*(?:[kmgt](?:i?b)?|b|字节))\s*[）)]\s*$/i);
   const sizeText = size ? size[1].replace(/\s+/g, '') : '大小未知';
+  const sizeBytes = size ? parseSize(size[1]) : null;
   if (size) name = name.slice(0, size.index).trim();
   name = name.replace(/\s*[\r\n]+\s*/g, ' ').trim();
   const extension = extensionOf(name);
@@ -53,7 +55,7 @@ export function parsePreview(document, resource) {
     } catch { /* Never manufacture a missing download endpoint. */ }
   }
   if (!downloadUrl) throw new AppError('NO_DOWNLOAD', '该课件没有可用的原文件下载入口');
-  return { ...resource, previewUrl: identity.url, name, extension, sizeText, downloadUrl };
+  return { ...resource, previewUrl: identity.url, name, extension, sizeText, sizeBytes, downloadUrl };
 }
 
 export function courseTitle(title) {

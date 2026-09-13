@@ -22,6 +22,11 @@ test('valid PDF and PPTX signatures are accepted', async () => {
   const pptx={...file(),name:'一.pptx',extension:'pptx'};
   assert.ok(await preflight(pptx,{fetcher:async()=>new Response(new Uint8Array([80,75,3,4,0,0,0,0]))}));
 });
+test('a signature split across response chunks is still validated', async () => {
+  const pdf={...file(),name:'拆.pdf',extension:'pdf'};
+  const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('%PD'));c.enqueue(new TextEncoder().encode('F-1.7\n'));c.close();}});
+  assert.equal((await preflight(pdf,{fetcher:async()=>new Response(body,{headers:{'content-type':'application/pdf'}})})).mime,'application/pdf');
+});
 test('timeout includes a stalled body and cancels it', async () => {
   let cancelled=false;
   const response=new Response(new ReadableStream({cancel(){cancelled=true;}}));
