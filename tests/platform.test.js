@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseDirectory, parsePreview, courseTitle } from '../src/platform/parse.js';
 import { buildFilename, normalizeResourceUrl, validateFile } from '../src/platform/policy.js';
-import { parseUnitPage, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
+import { parseUnitPage, parseUnitIndex, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
 import { dom, listUrl, previewUrl, resource, preview, file, unitEntryUrl, unitPageUrl } from './helpers/dom.js';
 const code = value => error => error.code === value;
 test('list with extensionless names resolves actual PPT metadata', () => {
@@ -183,4 +183,104 @@ test('unit page with no valid anchors returns empty resources, non-unit URL retu
   const document = dom(`<a href="${unitEntryUrl()}">栏目</a><a href="https://course.buct.edu.cn/meol/buildless/resFolderViewList.do?columnId=41">文件夹</a>`);
   assert.deepEqual(parseUnitPage(document, unitPageUrl()).resources, []);
   assert.equal(parseUnitPage(document, listUrl), null);
+});
+
+test('unit index counts only the bounded list, not page-wide or navigation anchors', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`
+    <nav><a href="${entry(900)}">栏目</a></nav>
+    <a href="${entry(901)}">游离链接</a>
+    <ul id="units">
+      <li><a href="${entry(41)}">第一次</a></li>
+      <li><a href="${entry(42)}">第二次</a></li>
+      <li><a href="${entry(43)}">第三次</a></li>
+    </ul>`);
+  const index = parseUnitIndex(document, unitPageUrl());
+  assert.deepEqual(index.entries.map(item => item.columnId), ['41', '42', '43']);
+  assert.equal(index.courseId, '12');
+  assert.equal(index.key, `12|41:columnId=41&tagbug=client,42:columnId=42&tagbug=client,43:columnId=43&tagbug=client`);
+});
+test('unit index returns null for page-wide anchors without a list container or a non-unit page URL', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`<div><a href="${entry(41)}">第一次</a> <a href="${entry(42)}">第二次</a></div>`);
+  assert.equal(parseUnitIndex(document, unitPageUrl()), null);
+  const listed = dom(`<ul><li><a href="${entry(41)}">第一次</a></li><li><a href="${entry(42)}">第二次</a></li></ul>`);
+  assert.equal(parseUnitIndex(listed, listUrl), null);
+});
+test('two visible bounded groups are ambiguous', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`
+    <ul id="first"><li><a href="${entry(41)}">第一次</a></li><li><a href="${entry(42)}">第二次</a></li></ul>
+    <ul id="second"><li><a href="${entry(43)}">第三次</a></li><li><a href="${entry(44)}">第四次</a></li></ul>`);
+  assert.throws(() => parseUnitIndex(document, unitPageUrl()), code('AMBIGUOUS_UNIT_INDEX'));
+});
+test('single-entry groups are not counted', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`
+    <ul id="solo"><li><a href="${entry(41)}">第一次</a></li></ul>
+    <ul id="pair"><li><a href="${entry(42)}">第二次</a></li><li><a href="${entry(43)}">第三次</a></li></ul>`);
+  assert.deepEqual(parseUnitIndex(document, unitPageUrl()).entries.map(item => item.columnId), ['42', '43']);
+});
+test('nested lists count each anchor once in its nearest group', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`
+    <ul id="outer">
+      <li><a href="${entry(41)}">第一次</a></li>
+      <li><ul id="inner">
+        <li><a href="${entry(42)}">第二次</a></li>
+        <li><a href="${entry(43)}">第三次</a></li>
+      </ul></li>
+    </ul>`);
+  const index = parseUnitIndex(document, unitPageUrl());
+  assert.deepEqual(index.entries.map(item => item.columnId), ['42', '43']);
+});
+test('hidden groups are excluded and cannot create ambiguity', () => {
+  const entry = unitEntryUrl;
+  const visible = `<ul><li><a href="${entry(41)}">第一次</a></li><li><a href="${entry(42)}">第二次</a></li></ul>`;
+  for (const attributes of ['hidden', 'inert', 'disabled', 'aria-hidden="true"', 'aria-disabled="true"', 'style="display:none"', 'style="visibility:collapse"']) {
+    const document = dom(`<ul ${attributes}><li><a href="${entry(43)}">第三次</a></li><li><a href="${entry(44)}">第四次</a></li></ul>${visible}`);
+    assert.deepEqual(parseUnitIndex(document, unitPageUrl()).entries.map(item => item.columnId), ['41', '42']);
+  }
+});
+test('duplicate columnId keeps the first DOM occurrence', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`<ul>
+    <li><a href="${entry(41)}">第一次</a></li>
+    <li><a href="${entry(42)}">第二次</a></li>
+    <li><a href="${entry(41)}">重复单元</a></li>
+    <li><a href="${entry(42)}">重复单元</a></li>
+  </ul>`);
+  const index = parseUnitIndex(document, unitPageUrl());
+  assert.deepEqual(index.entries.map(item => item.columnId), ['41', '42']);
+  assert.deepEqual(index.entries.map(item => item.title), ['第一次', '第二次']);
+});
+test('unsafe entry links and auxiliary routes never form a group', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`<ul>
+    <li><a href="${entry(41).replace('tagbug=client', 'tagbug=server')}">错误参数</a></li>
+    <li><a href="${entry(42).replace('course_column_preview_transfer.jsp', 'resFolderViewList.do')}">文件夹</a></li>
+    <li><a href="${entry(43).replace('https://', 'http://')}">不安全</a></li>
+    <li><button onclick="go(44)">按钮</button></li>
+    <li><a href="#">脚本单元</a></li>
+  </ul>`);
+  assert.equal(parseUnitIndex(document, unitPageUrl()), null);
+});
+test('entry titles are sanitized, truncated and fall back when empty', () => {
+  const entry = unitEntryUrl;
+  const long = '长'.repeat(250);
+  const document = dom(`<ul>
+    <li><a href="${entry(41)}">  第一 次 <img onerror=alert(1) src=x> </a></li>
+    <li><a href="${entry(42)}">${long}</a></li>
+    <li><a href="${entry(43)}"><img alt="" src=x></a></li>
+  </ul>`);
+  const index = parseUnitIndex(document, unitPageUrl());
+  assert.deepEqual(index.entries.map(item => item.title), ['第一 次', '长'.repeat(200), '单元 3']);
+  assert.deepEqual(index.entries.map(item => item.order), [0, 1, 2]);
+});
+test('role list containers and non-list markup do not mix groups', () => {
+  const entry = unitEntryUrl;
+  const document = dom(`
+    <div role="list"><span role="listitem"><a href="${entry(41)}">第一次</a></span><span role="listitem"><a href="${entry(42)}">第二次</a></span></div>
+    <ul><li><a href="${entry(43)}">第三次</a></li><li><a href="${entry(44)}">第四次</a></li></ul>`);
+  assert.throws(() => parseUnitIndex(document, unitPageUrl()), code('AMBIGUOUS_UNIT_INDEX'));
 });

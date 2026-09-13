@@ -69,3 +69,36 @@ export function parseUnitPage(document, pageUrl) {
   }
   return { surface: 'unit-study', courseId: page.courseId, layout: page.layout, url: page.url, resources: [...unique.values()] };
 }
+
+const canonicalEntryParams = (entryUrl) =>
+  [...new URL(entryUrl).searchParams].sort().map(([name, value]) => `${name}=${value}`).join('&');
+
+export function parseUnitIndex(document, pageUrl) {
+  let page;
+  try { page = normalizeUnitPageUrl(pageUrl); } catch { return null; }
+  const groups = new Map();
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    if (isUnavailable(anchor)) continue;
+    let parsed;
+    try { parsed = normalizeUnitEntryUrl(anchor.getAttribute('href'), pageUrl); } catch { continue; }
+    const container = anchor.closest('ul,ol,[role="list"]');
+    if (!container) continue;
+    const group = groups.get(container) ?? new Map();
+    if (!group.has(parsed.columnId)) group.set(parsed.columnId, { parsed, anchor });
+    groups.set(container, group);
+  }
+  const bounded = [...groups.values()].filter(group => group.size >= 2);
+  if (bounded.length === 0) return null;
+  if (bounded.length > 1) throw new AppError('AMBIGUOUS_UNIT_INDEX', '页面存在多个单元列表，无法确定扫描范围');
+  const entries = [...bounded[0].values()].map(({ parsed, anchor }, order) => ({
+    columnId: parsed.columnId,
+    entryUrl: parsed.url,
+    title: anchor.textContent.replace(/\s+/g, ' ').trim().slice(0, 200) || `单元 ${order + 1}`,
+    order,
+  }));
+  return {
+    courseId: page.courseId,
+    entries,
+    key: `${page.courseId}|${entries.map(entry => `${entry.columnId}:${canonicalEntryParams(entry.entryUrl)}`).join(',')}`,
+  };
+}
