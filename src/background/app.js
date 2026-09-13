@@ -12,7 +12,13 @@ export function createRouter({ chrome, queue, bridge }) {
         const jobs = await queue.refresh();
         return { ...await bridge.getState(message.tabId, message.checkContext !== false), queue: jobs };
       }
-      case 'START_SCAN': return bridge.start(message.tabId);
+      case 'START_SCAN': {
+        // Only the range is carried: an absent mode keeps the single-page scan,
+        // an unknown one never starts anything.
+        const mode = message.mode === undefined || message.mode === null ? 'current' : message.mode;
+        if (mode !== 'current' && mode !== 'all') throw new AppError('INVALID_MESSAGE', '扫描范围无效，请选择当前单元或全部单元');
+        return bridge.start(message.tabId, mode);
+      }
       case 'DOWNLOAD_SELECTED': {
         if (!Array.isArray(message.ids) || !message.ids.length || message.ids.some(id => typeof id !== 'string')) {
           throw new AppError('INVALID_MESSAGE', '请先勾选课件');
