@@ -28,6 +28,11 @@ export const PANEL_HTML = `<section class="panel" role="dialog" aria-label="课�
     <button type="button" class="primary" data-ref="scan">扫描当前目录</button>
     <input type="search" class="search" data-ref="search" placeholder="搜索文件名" aria-label="搜索文件名" />
   </div>
+  <div class="mode" data-ref="modeRow" hidden>
+    <label class="mode-label"><span>扫描范围</span>
+      <select class="mode-select" data-ref="mode"></select>
+    </label>
+  </div>
   <div class="filters" role="group" aria-label="按格式筛选">
     <button type="button" class="chip" data-format="all" aria-pressed="true">全部</button>
     <button type="button" class="chip" data-format="pdf" aria-pressed="false">PDF</button>

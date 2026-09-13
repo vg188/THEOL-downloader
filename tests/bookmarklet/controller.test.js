@@ -43,10 +43,41 @@ function harness(options = {}) {
       return { triggered: selected.map(item => ({ id: item.id, name: item.name })), failed: [], caution: '已触发不代表文件已保存完成。' };
     }),
   };
+  if (options.inspect) deps.inspect = options.inspect;
   if (options.deliverArchive) deps.deliverArchive = async value => { calls.deliver.push(value); };
   const controller = createBookmarkletController(deps);
   return { controller, calls, files, deps };
 }
+
+// A page contract shaped exactly like discoverSurface's: the controller is
+// driven through the same fields production uses, never a second convention.
+const UNIT_PAGE_URL = 'https://course.buct.edu.cn/meol/jpk/course/layout/lesson/index.jsp?courseId=12';
+const DIRECTORY_URL = 'https://course.buct.edu.cn/meol/common/script/listview.jsp?lid=12&folderid=34';
+const entryUrl = n => `https://course.buct.edu.cn/meol/jpk/course/course_column_preview_transfer.jsp?columnId=${n}&tagbug=client`;
+const documents = new Map();
+const pageDocument = name => {
+  if (!documents.has(name)) documents.set(name, { title: name });
+  return documents.get(name);
+};
+function inspection({ surface = 'unit-study', entries = 2, name = 'page' } = {}) {
+  const modes = surface === 'unit-study' && entries > 0 ? ['current', 'all'] : ['current'];
+  const unitPage = { courseId: '12', layout: 'lesson', url: UNIT_PAGE_URL, resources: [] };
+  const directory = surface === 'resource-directory'
+    ? { courseId: '12', folderId: '34', url: DIRECTORY_URL, key: '12/34|', resources: [] } : null;
+  const unitIndex = modes.includes('all') ? {
+    courseId: '12', entries: Array.from({ length: entries }, (_, index) => ({
+      columnId: String(41 + index), entryUrl: entryUrl(41 + index), title: `第${41 + index}次课`, order: index,
+    })), key: `12|${entries}`,
+  } : null;
+  return {
+    context: { courseId: '12', folderId: directory?.folderId ?? null, courseName: '电路与模拟电子技术',
+      url: directory?.url ?? unitPage.url, surface, mode: 'current', unitKey: surface === 'unit-study' ? unitPage.url : '',
+      modeOptions: modes, key: `${surface}|${directory?.key || unitPage.url}|${unitIndex?.key || ''}`,
+      resourceIds: [], document: pageDocument(name), location: directory?.url ?? unitPage.url },
+    surface: { surface, modeOptions: modes, directory, unitPage: surface === 'unit-study' ? unitPage : null, unitIndex },
+  };
+}
+
 
 const selectAll = (controller, files) => { for (const item of files) controller.toggle(item.id, true); };
 
@@ -517,4 +548,241 @@ test('query and format filter the visible list without touching the selection', 
   assert.equal(controller.setFormat('docx').format, 'all', 'unsupported filters fall back to all formats');
   assert.equal(controller.setQuery('').files.length, 2);
   assert.deepEqual(controller.getSnapshot().failures, []);
+});
+
+// ---------------------------------------------------------------------------
+// Scan ranges (bookmarklet modes)
+// ---------------------------------------------------------------------------
+
+test('a fresh controller reports no range contract until the page is inspected', () => {
+  const { controller } = harness();
+  const snapshot = controller.getSnapshot();
+  assert.equal(snapshot.mode, 'current');
+  assert.deepEqual(snapshot.modes, []);
+  assert.equal(snapshot.surface, null);
+  assert.equal(snapshot.unitCount, 0);
+  assert.deepEqual(snapshot.units, { processed: 0, total: 0, discovered: 0 });
+  assert.deepEqual(snapshot.unitFailures, []);
+});
+
+test('showing the panel reads the page contract without starting any scan', () => {
+  let inspected = 0;
+  const { controller, calls } = harness({ inspect: () => { inspected++; return inspection({ entries: 3 }); } });
+  const shown = controller.show();
+  assert.equal(inspected, 1);
+  assert.equal(shown.surface, 'unit-study');
+  assert.deepEqual(shown.modes, ['current', 'all']);
+  assert.equal(shown.unitCount, 3);
+  assert.equal(shown.mode, 'current');
+  assert.equal(calls.scan.length, 0, 'inspection never fetches');
+});
+
+test('selecting all and invoking scan confirms the range before reading any unit page', async () => {
+  let unitsRead = 0;
+  const { controller, calls } = harness({
+    files: [file(1)],
+    inspect: () => inspection({ entries: 2 }),
+    scan: async request => {
+      calls.scan.push(request);
+      unitsRead += request.mode === 'all' ? 1 : 0;
+      return scanPayload([file(1)]);
+    },
+  });
+  controller.show();
+  controller.setScanMode('all');
+  const confirming = await controller.scan();
+  assert.equal(confirming.state, 'confirm-all-units');
+  assert.deepEqual(confirming.confirmation, { mode: 'all', unitCount: 2 });
+  assert.equal(calls.scan.length, 0, 'no scan starts before the confirmation');
+  assert.equal(unitsRead, 0);
+  controller.confirm();
+  assert.equal(controller.getSnapshot().state, 'confirm-all-units', 'the download confirm never starts a scan');
+  assert.equal(calls.scan.length, 0);
+
+  const pending = controller.confirmAllUnits();
+  assert.equal(controller.getSnapshot().state, 'scanning');
+  assert.equal(calls.scan.length, 1);
+  assert.equal(calls.scan[0].mode, 'all');
+  assert.ok(calls.scan[0].signal instanceof AbortSignal);
+  assert.equal(typeof calls.scan[0].onProgress, 'function');
+  const ready = await pending;
+  assert.equal(ready.state, 'ready');
+  assert.equal(ready.confirmation, null);
+  assert.equal(unitsRead, 1);
+});
+
+test('the current range scans without any confirmation and never reports all', async () => {
+  const { controller, calls } = harness({ files: [file(1)], inspect: () => inspection() });
+  controller.show();
+  await controller.scan();
+  assert.equal(calls.scan.length, 1);
+  assert.equal(calls.scan[0].mode, 'current');
+  assert.equal(controller.getSnapshot().mode, 'current');
+  assert.equal(controller.getSnapshot().state, 'ready');
+});
+
+test('all is refused on a page whose surface does not offer it', async () => {
+  const { controller, calls } = harness({ inspect: () => inspection({ surface: 'resource-directory' }) });
+  controller.show();
+  assert.equal(controller.setScanMode('all').mode, 'current', 'the range control never offers an unsupported range');
+  // A stale range cannot be forced through either: scan() validates it again.
+  const refused = await controller.scan();
+  assert.equal(refused.state, 'ready');
+  assert.equal(calls.scan[0].mode, 'current');
+});
+
+test('cancelling the all-units confirmation reads nothing', async () => {
+  const { controller, calls } = harness({ files: [file(1)], inspect: () => inspection() });
+  controller.show();
+  controller.setScanMode('all');
+  await controller.scan();
+  const cancelled = controller.cancel();
+  assert.equal(cancelled.state, 'idle', 'nothing was scanned yet, so the panel returns to idle');
+  assert.equal(cancelled.confirmation, null);
+  assert.equal(calls.scan.length, 0);
+});
+
+test('cancelling a running all-units scan aborts it and drops its late result', async () => {
+  const scan = deferred();
+  let request;
+  const { controller, calls } = harness({
+    inspect: () => inspection(),
+    scan: received => { request = received; calls.scan.push(received); return scan.promise; },
+  });
+  controller.show();
+  controller.setScanMode('all');
+  await controller.scan();
+  const pending = controller.confirmAllUnits();
+  assert.equal(controller.getSnapshot().state, 'scanning');
+  assert.equal(controller.cancel().state, 'cancelled');
+  assert.equal(request.signal.aborted, true);
+  assert.equal(calls.cancelScan, 1);
+  scan.resolve(scanPayload([file(7)]));
+  await pending;
+  assert.equal(controller.getSnapshot().state, 'cancelled');
+  assert.equal(controller.getSnapshot().fileCount, 0);
+});
+
+test('unit counters and failures stream into the panel while all units load', async () => {
+  const seen = [];
+  const files = [file(1)];
+  const { controller } = harness({
+    files,
+    inspect: () => inspection({ entries: 3 }),
+    scan: async ({ onProgress }) => {
+      onProgress({ kind: 'unit-progress', processed: 1, total: 3, discovered: 1 });
+      onProgress({ kind: 'discovered', order: 0, resources: [] });
+      onProgress({ kind: 'unit-progress', processed: 2, total: 3, discovered: 2, failure: { columnId: '42', title: '第42次课', code: 'NO_DOWNLOAD', message: '单元页面无法访问' } });
+      onProgress({ kind: 'progress', processed: 1, total: 1, message: '正在识别 1 / 1' });
+      return scanPayload(files, { unitFailures: [{ kind: 'unit', columnId: '42', title: '第42次课', code: 'NO_DOWNLOAD', message: '单元页面无法访问' }],
+        units: { processed: 3, total: 3, discovered: 1 } });
+    },
+  });
+  controller.subscribe(snapshot => seen.push(snapshot));
+  controller.show();
+  controller.setScanMode('all');
+  await controller.scan();
+  await controller.confirmAllUnits();
+
+  const collecting = seen.filter(snapshot => snapshot.state === 'scanning').map(snapshot => [snapshot.units.processed, snapshot.progress.message]);
+  assert.deepEqual(collecting, [
+    [0, '正在读取单元页面…'],
+    [1, '正在读取单元 1 / 3，已发现 1 个候选'],
+    [2, '正在读取单元 2 / 3，已发现 2 个候选'],
+    // The discovered batch between those two unit counters published nothing:
+    // no snapshot was emitted for it.
+    [2, '正在识别 1 / 1'],
+  ]);
+  const ready = controller.getSnapshot();
+  assert.deepEqual(ready.units, { processed: 3, total: 3, discovered: 1 });
+  assert.deepEqual(ready.unitFailures.map(failure => failure.columnId), ['42']);
+  assert.deepEqual(ready.failures, [], 'unit failures stay separate from file failures');
+});
+
+test('changing the range drops the selection and any pending confirmation', async () => {
+  const { controller, files } = harness({ files: [file(1, MiB)], inspect: () => inspection() });
+  controller.show();
+  await controller.scan();
+  selectAll(controller, files);
+  assert.deepEqual(controller.getSnapshot().selectedIds, ['12:78:1']);
+  assert.equal(controller.requestDownload().state, 'confirm-zip');
+
+  const changed = controller.setScanMode('all');
+  assert.equal(changed.mode, 'all');
+  assert.deepEqual(changed.selectedIds, []);
+  assert.equal(changed.confirmation, null);
+  assert.equal(changed.state, 'ready');
+  await controller.confirm();
+});
+
+test('the range is immutable while an archive or direct download is running', async () => {
+  const archive = deferred();
+  const { controller, calls, files } = harness({
+    files: [file(1, MiB)],
+    inspect: () => inspection(),
+    archiveFiles: (selected, request) => { calls.archive.push({ selected, request }); return archive.promise; },
+  });
+  controller.show();
+  await controller.scan();
+  selectAll(controller, files);
+  controller.requestDownload();
+  const pending = controller.confirm();
+  assert.equal(controller.getSnapshot().state, 'archiving');
+  assert.equal(controller.setScanMode('all').mode, 'current', 'the running task pins the range it was started from');
+  archive.resolve({ blob: {}, name: '课件.zip', bytes: 1, entries: 1, failures: [] });
+  await pending;
+  assert.equal(controller.setScanMode('all').mode, 'all', 'once the task settles the range is free again');
+});
+
+test('a changed page invalidates the selection, the confirmation and the old file list', async () => {
+  const files = [file(1, MiB)];
+  let page = inspection({ entries: 2, name: 'first' });
+  const { controller } = harness({ files, inspect: () => page });
+  controller.show();
+  await controller.scan();
+  selectAll(controller, files);
+  assert.equal(controller.requestDownload().state, 'confirm-zip');
+
+  // A reloaded frame document under the same URL is a different generation.
+  page = inspection({ entries: 2, name: 'second' });
+  const reloaded = controller.show();
+  assert.deepEqual(reloaded.selectedIds, []);
+  assert.equal(reloaded.confirmation, null);
+  assert.equal(reloaded.fileCount, 0, 'the previous scan belongs to the previous page');
+  assert.equal(reloaded.state, 'idle');
+
+  // So is another folder, unit page or unit index.
+  page = inspection({ surface: 'resource-directory', name: 'directory' });
+  assert.equal(controller.show().surface, 'resource-directory');
+  assert.deepEqual(controller.getSnapshot().modes, ['current']);
+});
+
+test('an edited unit index invalidates the selection even in the same frame', async () => {
+  const files = [file(1, MiB)];
+  let page = inspection({ entries: 2, name: 'unit' });
+  const { controller } = harness({ files, inspect: () => page });
+  controller.show();
+  await controller.scan();
+  selectAll(controller, files);
+  assert.deepEqual(controller.getSnapshot().selectedIds, ['12:78:1']);
+
+  // The same document now advertises three units: the range it belongs to has
+  // changed, so nothing selected for the previous index may survive.
+  page = inspection({ entries: 3, name: 'unit' });
+  const changed = controller.show();
+  assert.equal(changed.unitCount, 3);
+  assert.deepEqual(changed.selectedIds, []);
+  assert.equal(changed.fileCount, 0);
+  assert.equal(changed.state, 'idle');
+});
+
+test('the range survives an unchanged page and a repeated show', async () => {
+  let inspected = 0;
+  const { controller } = harness({ files: [file(1)], inspect: () => { inspected++; return inspection(); } });
+  controller.show();
+  controller.setScanMode('all');
+  const again = controller.show();
+  assert.equal(inspected, 2);
+  assert.equal(again.mode, 'all', 'an unchanged page keeps the chosen range');
+  assert.equal(again.state, 'idle');
 });

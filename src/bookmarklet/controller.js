@@ -3,11 +3,13 @@ import { createSelection, formatBytes } from '../popup/model.js';
 import { ZIP_LIMIT_BYTES, planDownload } from './download-plan.js';
 
 const BUSY = new Set(['scanning', 'archiving', 'direct-downloading']);
-// States that hold a confirmation derived from the current selection.
-const CONFIRMING = new Set(['confirm-zip', 'confirm-direct', 'actual-size-overflow']);
+// States that hold a confirmation: a download plan derived from the current
+// selection, or the all-units range waiting for its own explicit confirmation.
+const CONFIRMING = new Set(['confirm-zip', 'confirm-direct', 'actual-size-overflow', 'confirm-all-units']);
 // States where the user can pick files or ask for another download.
 const IDLE = new Set(['idle', 'ready', 'done', 'cancelled', 'error']);
 const FORMATS = new Set(['all', 'pdf', 'ppt', 'pptx']);
+const MODES = new Set(['current', 'all']);
 
 // Keep in sync with ActualSizeLimitError in src/bookmarklet/archive.js.
 function defaultActualSizeLimit(error) {
@@ -17,6 +19,14 @@ function defaultActualSizeLimit(error) {
 function countOf(...values) {
   for (const value of values) if (Number.isFinite(value)) return value;
   return null;
+}
+
+// The unit-collection counters the panel renders: `all` reports them while the
+// unit pages load, and the settled snapshot keeps the last values.
+function frozenCounters(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const count = key => Number.isFinite(source[key]) && source[key] >= 0 ? source[key] : 0;
+  return Object.freeze({ processed: count('processed'), total: count('total'), discovered: count('discovered') });
 }
 
 // One stable progress shape for the panel, whatever the running task reports.
@@ -36,7 +46,11 @@ function progressFrom(event, { total = 0, message = '' } = {}) {
  * Browser-neutral coordinator for the bookmarklet panel.
  *
  * Dependencies (all injected, no chrome.* calls):
- * - `scan({signal,onProgress}) => Promise<{files,failures,context,id,phase,...}>`
+ * - `inspect?() => {context,surface}` local surface inspection with no request;
+ *   its `context.key`/`context.document` identity is what makes a page change
+ *   invalidate the selection
+ * - `scan({mode,signal,onProgress}) => Promise<{files,failures,unitFailures,units,context,id,phase,...}>`
+ *   called only after a confirmation when `mode` is `all`
  * - `cancelScan?()` for scanners that need an explicit abort
  * - `archiveFiles(files,{signal,onProgress}) => Promise<{blob,name,bytes,entries,failures}>`
  *   and rejecting `ActualSizeLimitError` (`code:'ACTUAL_SIZE_LIMIT'`) on a breach
@@ -56,8 +70,13 @@ export function createBookmarkletController(dependencies = {}) {
   let visible = false;
   let query = '';
   let format = 'all';
+  let mode = 'current';
+  // The last inspected page contract: which surface this page offers, and which
+  // ranges it supports. `null` means "not inspected or no longer a surface".
+  let inspected = null;
   let scanned = null;
   let progress = null;
+  let units = frozenCounters(null);
   let confirmation = null;
   let result = null;
   let failure = null;
@@ -69,6 +88,46 @@ export function createBookmarkletController(dependencies = {}) {
 
   function scanFiles() {
     return Array.isArray(scanned?.files) ? scanned.files : [];
+  }
+
+  function availableModes() {
+    const source = inspected?.surface?.modeOptions ?? scanned?.context?.modeOptions ?? [];
+    return source.filter(value => MODES.has(value));
+  }
+
+  // The surface identity: a different surface, folder, unit page, unit index or
+  // live frame document is a different generation of the page.
+  function samePage(left, right) {
+    if (!left || !right) return left === right;
+    return left.context?.key === right.context?.key && left.context?.document === right.context?.document;
+  }
+
+  /**
+   * Re-reads the page contract. Inspection is local DOM work — it makes no
+   * request — so it never counts as starting a scan; it is skipped while a task
+   * runs, because that task already owns the surface it was started on.
+   *
+   * A changed page invalidates everything derived from the old one: the
+   * selection, any pending confirmation and the previous scan's file list.
+   */
+  function refreshPage() {
+    if (typeof dependencies.inspect !== 'function' || task) return false;
+    let next = null;
+    try { next = dependencies.inspect() ?? null; } catch { next = null; }
+    if (samePage(inspected, next)) return false;
+    inspected = next;
+    const modes = availableModes();
+    if (modes.length && !modes.includes(mode)) mode = 'current';
+    selection.clear();
+    confirmation = null;
+    failure = null;
+    notice = '';
+    progress = null;
+    result = null;
+    scanned = null;
+    units = frozenCounters(null);
+    state = 'idle';
+    return true;
   }
 
   function selectedFiles() {
@@ -94,12 +153,21 @@ export function createBookmarkletController(dependencies = {}) {
     const shown = selection.visible(files, query, format);
     const chosen = selectedFiles();
     const plan = planDownload(chosen);
+    const modes = availableModes();
     return Object.freeze({
       state,
       busy: BUSY.has(state),
       visible,
       query,
       format,
+      // The scan-range contract the panel renders: which surface this page is
+      // and which ranges it offers, never page copy.
+      mode,
+      modes: Object.freeze(modes),
+      surface: inspected?.surface?.surface ?? scanned?.context?.surface ?? null,
+      unitCount: inspected?.surface?.unitIndex?.entries?.length ?? units.total,
+      units,
+      unitFailures: Object.freeze(Array.isArray(scanned?.unitFailures) ? scanned.unitFailures : []),
       courseName: scanned?.context?.courseName ?? '',
       files: Object.freeze(shown),
       fileCount: files.length,
@@ -168,38 +236,103 @@ export function createBookmarkletController(dependencies = {}) {
   async function scan() {
     if (BUSY.has(state)) { notice = '请先取消当前任务'; emit(); return getSnapshot(); }
     if (typeof dependencies.scan !== 'function') return fail(new AppError('NOT_CONFIGURED', '扫描组件未加载'));
+    // Inspect first: the range the user chose is validated against the page as
+    // it is now, and `all` needs the unit count before it can be confirmed.
+    refreshPage();
+    if (mode === 'all') {
+      const modes = availableModes();
+      if (modes.length && !modes.includes('all')) return fail(new AppError('INVALID_MESSAGE', '当前页面不支持扫描全部单元'));
+      // No unit page is read until the user confirms this exact range.
+      confirmation = Object.freeze({ mode: 'all', unitCount: inspected?.surface?.unitIndex?.entries?.length ?? 0 });
+      state = 'confirm-all-units';
+      progress = null;
+      result = null;
+      failure = null;
+      notice = '';
+      return emit();
+    }
+    return startScan('current');
+  }
+
+  function startScan(scanMode) {
+    if (typeof dependencies.scan !== 'function') return fail(new AppError('NOT_CONFIGURED', '扫描组件未加载'));
     const generation = ++scanGeneration;
     invalidateTask();
     selection.reset(generation);
+    mode = scanMode;
     state = 'scanning';
     scanned = null;
     confirmation = null;
     result = null;
     failure = null;
     notice = '';
-    progress = progressFrom(null, { total: 0, message: '正在扫描当前目录…' });
+    units = frozenCounters(null);
+    progress = progressFrom(null, { total: 0, message: scanMode === 'all' ? '正在读取单元页面…' : '正在扫描当前目录…' });
     const controller = new AbortController();
     task = { kind: 'scan', generation, controller };
     emit();
-    let outcome;
-    try {
-      outcome = await dependencies.scan({
-        signal: controller.signal,
-        onProgress: event => {
-          if (task?.generation !== generation) return;
-          progress = progressFrom(event, { total: progress?.total ?? 0, message: progress?.message ?? '' });
-          emit();
-        },
-      });
-    } catch (error) {
+    return (async () => {
+      let outcome;
+      try {
+        outcome = await dependencies.scan({
+          mode: scanMode,
+          signal: controller.signal,
+          onProgress: event => {
+            // Progress from a superseded scan is dropped with its generation.
+            if (task?.generation !== generation) return;
+            if (event?.kind === 'unit-progress') {
+              units = frozenCounters(event);
+              progress = progressFrom({
+                message: `正在读取单元 ${units.processed} / ${units.total}，已发现 ${units.discovered} 个候选`,
+                processed: units.processed, total: units.total,
+              }, { message: '' });
+              return emit();
+            }
+            // A discovered batch has already widened the running scan's own
+            // resource list: it changes nothing the panel shows yet.
+            if (event?.kind === 'discovered') return;
+            progress = progressFrom(event, { total: progress?.total ?? 0, message: progress?.message ?? '' });
+            emit();
+          },
+        });
+      } catch (error) {
+        if (task?.generation !== generation) return getSnapshot();
+        return fail(error);
+      }
       if (task?.generation !== generation) return getSnapshot();
-      return fail(error);
-    }
-    if (task?.generation !== generation) return getSnapshot();
-    task = null;
-    scanned = outcome && typeof outcome === 'object' ? outcome : null;
-    state = 'ready';
-    progress = null;
+      task = null;
+      scanned = outcome && typeof outcome === 'object' ? outcome : null;
+      units = frozenCounters(scanned?.units);
+      state = 'ready';
+      progress = null;
+      return emit();
+    })();
+  }
+
+  /** The explicit confirmation for the `all` range: this is what reads units. */
+  function confirmAllUnits() {
+    if (state !== 'confirm-all-units' || task) return getSnapshot();
+    confirmation = null;
+    return startScan('all');
+  }
+
+  /**
+   * The scan range. A different range is a different selection scope, so
+   * nothing selected or confirmed for the previous one may survive it. While a
+   * task is running — an archive or direct download above all — the range is
+   * immutable: the task was started from this one.
+   */
+  function setScanMode(value) {
+    const next = MODES.has(value) ? value : 'current';
+    if (task || next === mode) return getSnapshot();
+    const modes = availableModes();
+    if (next === 'all' && modes.length && !modes.includes('all')) return getSnapshot();
+    mode = next;
+    selection.clear();
+    confirmation = null;
+    failure = null;
+    notice = '';
+    if (CONFIRMING.has(state) || BUSY.has(state)) state = scanned ? 'ready' : 'idle';
     return emit();
   }
 
@@ -356,7 +489,7 @@ export function createBookmarkletController(dependencies = {}) {
   }
 
   function cancel() {
-    if (CONFIRMING.has(state)) { state = 'ready'; confirmation = null; notice = ''; return emit(); }
+    if (CONFIRMING.has(state)) { state = scanned ? 'ready' : 'idle'; confirmation = null; notice = ''; return emit(); }
     if (!BUSY.has(state)) return getSnapshot();
     const kind = task?.kind;
     scanGeneration++;
@@ -377,7 +510,10 @@ export function createBookmarkletController(dependencies = {}) {
   }
 
   function show() {
-    if (visible) return getSnapshot();
+    // The page contract is refreshed every time the panel comes back, so a
+    // reloaded or navigated frame cannot leave a stale range control behind.
+    const changed = refreshPage();
+    if (visible && !changed) return getSnapshot();
     visible = true;
     return emit();
   }
@@ -387,5 +523,5 @@ export function createBookmarkletController(dependencies = {}) {
     return () => listeners.delete(listener);
   }
 
-  return { getSnapshot, subscribe, scan, setQuery, setFormat, toggle, requestDownload, confirm, cancel, hide, show };
+  return { getSnapshot, subscribe, scan, setScanMode, confirmAllUnits, setQuery, setFormat, toggle, requestDownload, confirm, cancel, hide, show };
 }

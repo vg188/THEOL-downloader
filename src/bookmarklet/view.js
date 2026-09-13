@@ -7,14 +7,32 @@ import { DIRECT_DOWNLOAD_CAUTION } from './direct-download.js';
 import { createPanelHost } from './template.js';
 
 const FORMAT_LABELS = { all: '全部', pdf: 'PDF', ppt: 'PPT', pptx: 'PPTX' };
-const CONFIRM_STATES = new Set(['confirm-zip', 'confirm-direct', 'actual-size-overflow']);
-const SCAN_LABEL = '扫描当前目录';
+const CONFIRM_STATES = new Set(['confirm-zip', 'confirm-direct', 'actual-size-overflow', 'confirm-all-units']);
 const SCANNING_LABEL = '扫描中…';
 const UNKNOWN_SIZE_TEXT = '大小未知';
-const EMPTY_SCAN_MESSAGE = '点击“扫描当前目录”读取当前页面的课件列表';
 const EMPTY_LIST_MESSAGE = '当前列表没有可下载的 PDF、PPT 或 PPTX 文件';
 const NO_MATCH_MESSAGE = '没有匹配的文件';
 const BUSY_NOTE = '任务进行中：请保持页面打开，不要刷新或关闭页面。';
+// The range wording mirrors the extension popup: a course-resource page scans
+// its current directory, a unit page its current unit or every unit.
+const RANGE_LABELS = { current: '当前目录' };
+const UNIT_RANGE_LABELS = { current: '当前单元', all: '全部单元' };
+
+/**
+ * The ranges a snapshot offers, as `[value, label]`. A page with no inspected
+ * surface offers none, and the panel hides the control entirely.
+ */
+function rangeOptions(snapshot) {
+  const unit = snapshot.surface === 'unit-study';
+  const labels = unit ? UNIT_RANGE_LABELS : RANGE_LABELS;
+  return snapshot.modes.map(value => [value, labels[value] ?? value]);
+}
+
+/** The scan button and empty-state verb for the range the panel is set to. */
+function scanLabel(snapshot) {
+  if (snapshot.surface === 'unit-study') return snapshot.mode === 'all' ? '扫描全部单元' : '扫描当前单元';
+  return '扫描当前目录';
+}
 
 /**
  * Confirmation copy for one controller confirmation. `mode` decides the branch
@@ -24,6 +42,13 @@ const BUSY_NOTE = '任务进行中：请保持页面打开，不要刷新或关�
  * was destroyed.
  */
 function confirmationCopy(confirmation) {
+  if (confirmation.mode === 'all') {
+    return {
+      title: '扫描全部单元？',
+      lines: [`将读取当前课程的 ${confirmation.unitCount} 个单元页面，不会下载课件正文`],
+      confirm: '确认扫描',
+    };
+  }
   const count = confirmation.fileCount;
   const known = confirmation.knownTotalText;
   if (confirmation.reason === 'ACTUAL_SIZE_LIMIT') {
@@ -134,7 +159,7 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
 
   function emptyMessage(snapshot) {
     if (snapshot.fileCount) return NO_MATCH_MESSAGE;
-    return snapshot.scan?.phase === 'ready' ? EMPTY_LIST_MESSAGE : EMPTY_SCAN_MESSAGE;
+    return snapshot.scan?.phase === 'ready' ? EMPTY_LIST_MESSAGE : `点击“${scanLabel(snapshot)}”读取当前页面的课件列表`;
   }
 
   function countText(snapshot) {
@@ -242,7 +267,25 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
 
     toggle(refs.course, Boolean(snapshot.courseName));
     text(refs.course, snapshot.courseName);
-    text(refs.scan, busy ? SCANNING_LABEL : SCAN_LABEL);
+    // The range control exists only where more than one range is meaningful:
+    // a course-resource page keeps its fixed "当前目录".
+    const options = rangeOptions(snapshot);
+    const showModes = options.length > 1;
+    toggle(refs.modeRow, showModes);
+    const optionsKey = `${snapshot.surface}|${options.map(([value]) => value).join(',')}`;
+    if (showModes && refs.mode.dataset.options !== optionsKey) {
+      refs.mode.replaceChildren(...options.map(([value, label]) => {
+        const option = pageDocument.createElement('option');
+        option.value = value;
+        text(option, label);
+        return option;
+      }));
+      refs.mode.dataset.options = optionsKey;
+    }
+    if (refs.mode.value !== snapshot.mode) refs.mode.value = snapshot.mode;
+    refs.mode.disabled = busy;
+    const label = scanLabel(snapshot);
+    text(refs.scan, busy ? SCANNING_LABEL : label);
     refs.scan.disabled = busy;
     // The panel can only hide: a running task needs the page to stay open.
     text(refs.close, busy ? '隐藏' : '关闭');
@@ -261,8 +304,13 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
     text(refs.error, snapshot.error?.message ?? '');
     toggle(refs.busyNote, busy);
     text(refs.busyNote, busy ? BUSY_NOTE : '');
-    toggle(refs.failures, snapshot.failures.length > 0);
-    text(refs.failures, snapshot.failures.length ? `${snapshot.failures.length} 个文件未能读取，可重新扫描后再试。` : '');
+    // Unit failures and file failures are different repairs for the user, so
+    // they are reported separately, never summed.
+    const failureLines = [];
+    if (snapshot.failures.length) failureLines.push(`${snapshot.failures.length} 个文件未能读取，可重新扫描后再试。`);
+    if (snapshot.unitFailures.length) failureLines.push(`${snapshot.unitFailures.length} 个单元未能读取，其余单元已扫描。`);
+    toggle(refs.failures, failureLines.length > 0);
+    text(refs.failures, failureLines.join(' '));
     refs.download.disabled = busy;
     toggle(refs.cancel, busy);
     renderProgress(snapshot.progress);
@@ -272,6 +320,7 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
   }
 
   listen(refs.scan, 'click', () => { void controller.scan(); });
+  listen(refs.mode, 'change', event => controller.setScanMode(event.target.value));
   listen(refs.search, 'input', event => controller.setQuery(event.target.value));
   listen(refs.close, 'click', () => controller.hide());
   listen(refs.download, 'click', () => {
@@ -286,11 +335,14 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
   for (const chip of root.querySelectorAll('[data-format]')) {
     listen(chip, 'click', () => controller.setFormat(chip.dataset.format));
   }
-  // Delegated, so a rebuilt confirmation never accumulates listeners.
+  // Delegated, so a rebuilt confirmation never accumulates listeners. The
+  // all-units range has its own confirmation: only that one starts unit reads.
   listen(refs.confirm, 'click', event => {
     const action = event.target?.dataset?.action;
-    if (action === 'confirm') controller.confirm();
-    else if (action === 'cancel') controller.cancel();
+    if (action === 'confirm') {
+      if (controller.getSnapshot().state === 'confirm-all-units') controller.confirmAllUnits();
+      else controller.confirm();
+    } else if (action === 'cancel') controller.cancel();
   });
 
   pageDocument.documentElement.append(host);

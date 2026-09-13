@@ -6,6 +6,7 @@ import { AppError } from '../platform/policy.js';
 import { archiveFiles } from './archive.js';
 import { createBookmarkletController } from './controller.js';
 import { downloadDirect } from './direct-download.js';
+import { discoverSurface } from './discovery.js';
 import { createBookmarkletScanner } from './scanner.js';
 import { mountBookmarklet } from './view.js';
 
@@ -55,7 +56,10 @@ export function createRuntimeController({
   const scanner = createBookmarkletScanner({ fetcher: request, parseDocument: parse, timeoutMs });
   return createBookmarkletController({
     document: pageWindow.document,
-    scan: ({ onProgress }) => scanner.scan(pageWindow, onProgress),
+    // Surface recognition reads the page's own DOM: a bookmarklet cannot
+    // inspect a tab, so the shared parsers run in the page's world.
+    inspect: () => discoverSurface(pageWindow),
+    scan: ({ mode, onProgress }) => scanner.scan(pageWindow, { mode }, onProgress),
     cancelScan: () => scanner.cancel(),
     archiveFiles: (files, { signal, onProgress }) => archive(files, {
       fetcher: request, signal, onProgress, ...(createWorker ? { createWorker } : {}),

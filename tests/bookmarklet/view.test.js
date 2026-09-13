@@ -7,7 +7,7 @@ import { JSDOM } from 'jsdom';
 import { ActualSizeLimitError } from '../../src/bookmarklet/archive.js';
 import { createBookmarkletController } from '../../src/bookmarklet/controller.js';
 import { DIRECT_DOWNLOAD_CAUTION } from '../../src/bookmarklet/direct-download.js';
-import { downloadUrl, listUrl, preview, previewUrl } from '../helpers/dom.js';
+import { downloadUrl, listUrl, preview, previewUrl, unitEntryUrl, unitPageUrl } from '../helpers/dom.js';
 
 // `panel.css` reaches the shipped bundle through esbuild's text loader
 // (`loader:{'.css':'text'}`). This hook gives plain `node --test` the same module
@@ -41,7 +41,7 @@ function schoolPage(html = '') {
   return new JSDOM(`<!doctype html><html><head><title>网络课程—${COURSE_NAME}</title></head><body>${html}</body></html>`, { url: listUrl }).window;
 }
 
-function harness({ files = [file(1)], scan, archive, direct, deliver, courseName = COURSE_NAME } = {}) {
+function harness({ files = [file(1)], scan, archive, direct, deliver, inspect, courseName = COURSE_NAME } = {}) {
   const calls = { scan: 0, archive: [], direct: [], deliver: [] };
   const dependencies = {
     scan: scan ?? (async () => { calls.scan++; return payload(files, courseName); }),
@@ -55,9 +55,42 @@ function harness({ files = [file(1)], scan, archive, direct, deliver, courseName
       return { triggered: selected.map(item => ({ id: item.id, name: item.name })), failed: [], caution: DIRECT_DOWNLOAD_CAUTION };
     }),
   };
+  if (inspect) dependencies.inspect = inspect;
   if (deliver) dependencies.deliverArchive = deliver;
   return { controller: createBookmarkletController(dependencies), calls, files };
 }
+
+// A page contract shaped exactly like discoverSurface's, so the panel is driven
+// through the fields production uses.
+const UNIT_PAGE_URL = 'https://course.buct.edu.cn/meol/jpk/course/layout/lesson/index.jsp?courseId=12';
+const DIRECTORY_URL = 'https://course.buct.edu.cn/meol/common/script/listview.jsp?lid=12&folderid=34';
+const documents = new Map();
+const pageDocument = name => {
+  if (!documents.has(name)) documents.set(name, { title: name });
+  return documents.get(name);
+};
+function inspection({ surface = 'unit-study', entries = 2, name = 'page' } = {}) {
+  const modes = surface === 'unit-study' && entries > 0 ? ['current', 'all'] : ['current'];
+  const unitPage = { courseId: '12', layout: 'lesson', url: UNIT_PAGE_URL, resources: [] };
+  const directory = surface === 'resource-directory' ? { courseId: '12', folderId: '34', url: DIRECTORY_URL, key: '12/34|', resources: [] } : null;
+  const unitIndex = modes.includes('all') ? {
+    courseId: '12',
+    entries: Array.from({ length: entries }, (_, index) => ({
+      columnId: String(41 + index),
+      entryUrl: `https://course.buct.edu.cn/meol/jpk/course/course_column_preview_transfer.jsp?columnId=${41 + index}&tagbug=client`,
+      title: `第${41 + index}次课`, order: index,
+    })),
+    key: `12|${entries}`,
+  } : null;
+  return {
+    context: { courseId: '12', folderId: directory?.folderId ?? null, courseName: COURSE_NAME,
+      url: directory?.url ?? unitPage.url, surface, mode: 'current', unitKey: surface === 'unit-study' ? unitPage.url : '',
+      modeOptions: modes, key: `${surface}|${directory?.key || unitPage.url}|${unitIndex?.key || ''}`,
+      resourceIds: [], document: pageDocument(name), location: directory?.url ?? unitPage.url },
+    surface: { surface, modeOptions: modes, directory, unitPage: surface === 'unit-study' ? unitPage : null, unitIndex },
+  };
+}
+
 
 function mount(window, controller) {
   const instance = mountBookmarklet({ window, controller });
@@ -446,4 +479,164 @@ test('scanning through the real runtime delivers one ZIP blob that is revoked ri
   assert.deepEqual(revoked, ['blob:panel-test'], 'and revoked immediately after the click');
   assert.deepEqual(clicks, [{ href: 'blob:panel-test', download: '课件.zip' }]);
   assert.match(ref('result').textContent, /ZIP 已生成并触发下载/);
+});
+
+// ---------------------------------------------------------------------------
+// Scan ranges (bookmarklet modes)
+// ---------------------------------------------------------------------------
+
+test('a unit page offers the range control with the extension wording', () => {
+  const window = schoolPage();
+  const { controller } = harness({ inspect: () => inspection({ entries: 3 }) });
+  const { ref } = mount(window, controller);
+
+  assert.equal(ref('modeRow').hidden, false);
+  assert.deepEqual([...ref('mode').options].map(option => [option.value, option.textContent]),
+    [['current', '当前单元'], ['all', '全部单元']]);
+  assert.equal(ref('mode').value, 'current');
+  assert.equal(ref('mode').disabled, false);
+  assert.equal(ref('scan').textContent, '扫描当前单元');
+  assert.equal(ref('empty').textContent, '点击“扫描当前单元”读取当前页面的课件列表');
+});
+
+test('a course-resource page hides the range control and scans 当前目录', () => {
+  const window = schoolPage();
+  const { controller } = harness({ inspect: () => inspection({ surface: 'resource-directory' }) });
+  const { ref } = mount(window, controller);
+
+  assert.equal(ref('modeRow').hidden, true, 'a directory page has exactly one range');
+  assert.equal(ref('scan').textContent, '扫描当前目录');
+  assert.equal(ref('empty').textContent, '点击“扫描当前目录”读取当前页面的课件列表');
+});
+
+test('scanning every unit asks first and reads the units only after the confirmation', async () => {
+  const window = schoolPage();
+  const requests = [];
+  const { controller } = harness({
+    inspect: () => inspection({ entries: 2 }),
+    scan: async request => { requests.push(request); return payload([file(1)]); },
+  });
+  const { root, ref } = mount(window, controller);
+
+  ref('mode').value = 'all';
+  ref('mode').dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(controller.getSnapshot().mode, 'all');
+  assert.equal(ref('scan').textContent, '扫描全部单元');
+
+  ref('scan').click();
+  await tick();
+  assert.equal(controller.getSnapshot().state, 'confirm-all-units');
+  assert.deepEqual(requests, [], 'no unit page is read before the confirmation');
+  assert.equal(root.querySelector('.confirm-title').textContent, '扫描全部单元？');
+  assert.deepEqual(copyLines(root), ['将读取当前课程的 2 个单元页面，不会下载课件正文']);
+  assert.equal(root.querySelector('.confirm-actions [data-action="confirm"]').textContent, '确认扫描');
+  assert.equal(root.querySelector('.confirm-actions [data-action="cancel"]').textContent, '取消');
+
+  root.querySelector('.confirm-actions [data-action="cancel"]').click();
+  assert.equal(controller.getSnapshot().state, 'idle');
+  assert.deepEqual(requests, []);
+
+  ref('scan').click();
+  await tick();
+  root.querySelector('.confirm-actions [data-action="confirm"]').click();
+  await settle();
+  assert.deepEqual(requests.map(request => request.mode), ['all'], 'only the confirmation starts the unit reads');
+  assert.equal(controller.getSnapshot().state, 'ready');
+  assert.equal(ref('scan').textContent, '扫描全部单元');
+  assert.equal(ref('confirm').hidden, true);
+});
+
+test('switching the range drops the selection and returns the list to its own folder', async () => {
+  const window = schoolPage();
+  const { controller, files } = harness({ files: [file(1)], inspect: () => inspection() });
+  await controller.scan();
+  controller.toggle(files[0].id, true);
+  const { ref } = mount(window, controller);
+  assert.match(ref('counts').textContent, /已选 1 个/);
+
+  ref('mode').value = 'all';
+  ref('mode').dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.deepEqual(controller.getSnapshot().selectedIds, []);
+  assert.match(ref('counts').textContent, /已选 0 个/);
+});
+
+test('the range control is frozen while a task runs and unit and file failures stay apart', async () => {
+  const window = schoolPage();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { controller } = harness({
+    files: [file(1)],
+    inspect: () => inspection(),
+    scan: async () => {
+      await gate;
+      return {
+        ...payload([file(1)]),
+        failures: [{ id: '12:78:1', title: '第1章', code: 'NO_DOWNLOAD', message: '课件预览页无法访问' }],
+        unitFailures: [
+          { kind: 'unit', columnId: '41', title: '第41次课', code: 'NO_DOWNLOAD', message: '单元页面无法访问' },
+          { kind: 'unit', columnId: '42', title: '第42次课', code: 'NO_DOWNLOAD', message: '单元页面无法访问' },
+        ],
+      };
+    },
+  });
+  const { ref } = mount(window, controller);
+  const pending = controller.scan();
+  await tick();
+  assert.equal(ref('mode').disabled, true, 'a running task freezes the range control');
+  release();
+  await pending;
+
+  assert.equal(ref('mode').disabled, false);
+  assert.match(ref('failures').textContent, /1 个文件未能读取/);
+  assert.match(ref('failures').textContent, /2 个单元未能读取/);
+  assert.doesNotMatch(ref('failures').textContent, /3 个/);
+});
+
+test('the real runtime reads the current unit, then every unit, from one panel', async () => {
+  const window = new JSDOM(`<!doctype html><html><head><title>网络课程—${COURSE_NAME}</title></head><body>
+    <a href="${previewUrl(56)}">第56章</a>
+    <ul><li><a href="${unitEntryUrl(41)}">第41次课</a></li><li><a href="${unitEntryUrl(42)}">第42次课</a></li></ul>
+  </body></html>`, { url: unitPageUrl('lesson', 12) }).window;
+  const requested = [];
+  const withUrl = (value, url) => { Object.defineProperty(value, 'url', { value: url }); return value; };
+  const html = body => new Response(body, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
+  const fetcher = async url => {
+    requested.push(url);
+    if (url.includes('course_column_preview_transfer.jsp')) {
+      const columnId = new URL(url).searchParams.get('columnId');
+      return withUrl(html(`<!doctype html><title>单元学习</title><body><a href="${previewUrl(columnId)}">第${columnId}章</a></body>`), unitPageUrl('lesson', 12));
+    }
+    const fileId = new URL(url).searchParams.get('fileid');
+    return html(preview(`第${fileId}章.pdf`, fileId, '1M'));
+  };
+
+  const panel = installBookmarklet(window, { fetcher });
+  const root = window.document.getElementById(HOST_ID).shadowRoot;
+  const ref = name => root.querySelector(`[data-ref="${name}"]`);
+  const entries = () => requested.filter(url => url.includes('course_column_preview_transfer.jsp'));
+  const fileNames = () => [...root.querySelectorAll('.file-name')].map(node => node.textContent);
+
+  assert.equal(ref('modeRow').hidden, false, 'the unit page advertises its ranges');
+  assert.equal(ref('mode').value, 'current');
+
+  ref('scan').click();
+  await settle();
+  assert.deepEqual(entries(), [], 'the current unit reads no unit entry page');
+  assert.deepEqual(fileNames(), ['第56章.pdf']);
+  assert.equal(panel.getSnapshot().mode, 'current');
+
+  ref('mode').value = 'all';
+  ref('mode').dispatchEvent(new window.Event('change', { bubbles: true }));
+  ref('scan').click();
+  await settle();
+  assert.equal(panel.getSnapshot().state, 'confirm-all-units');
+  assert.deepEqual(entries(), [], 'still nothing is read before the confirmation');
+
+  root.querySelector('.confirm-actions [data-action="confirm"]').click();
+  await settle();
+  assert.deepEqual(entries().map(url => new URL(url).searchParams.get('columnId')), ['41', '42']);
+  assert.deepEqual(fileNames(), ['第41章.pdf', '第42章.pdf'], 'all mode scans the units, not the page shell');
+  assert.equal(panel.getSnapshot().mode, 'all');
+  assert.equal(panel.getSnapshot().state, 'ready');
+  assert.equal(requested.some(url => url.includes('download.jsp')), false, 'scanning never requests a download');
 });
