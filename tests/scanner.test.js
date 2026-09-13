@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { scanResources } from '../src/platform/scan.js';
 import { collectUnitResources } from '../src/platform/unit-scan.js';
+import { parseUnitPageFrames } from '../src/platform/unit.js';
 import { describeSurface } from '../src/platform/surface.js';
 import { AppError, errorResult } from '../src/platform/policy.js';
 import { dom, preview, resource, previewUrl, listUrl, unitEntryUrl, unitPageUrl } from './helpers/dom.js';
@@ -102,6 +103,13 @@ test('surface: unit page with zero previews still supports all when an index exi
   assert.equal(surface.unitIndex.entries.length, 2);
 });
 
+test('surface: a lesson shell with neither courseware nor a unit list is not a unit page', () => {
+  // The real course layout hosts the resource directory in a nested frame; the
+  // shell itself must not steal the scan from that directory frame.
+  assert.equal(describeSurface(dom('<nav>课程</nav>'), unitPageUrl()), null);
+  assert.equal(describeSurface(dom(''), unitPageUrl('newpage')), null);
+});
+
 test('surface: ordinary course shell is unrecognized', () => {
   const document = dom(`<a href="${previewUrl(56)}">第一章</a>${unitIndexHtml}`);
   assert.equal(describeSurface(document, 'https://course.buct.edu.cn/meol/jpk/course/welcome.jsp'), null);
@@ -149,7 +157,9 @@ const loadContentApi = async ({ url, document: pageDocument, fetcher }) => {
     },
   };
   const location = { href: url };
-  const globalScope = {};
+  // The content script resolves a unit surface from its own frame tree, so the
+  // injected global must expose the page document and a frames collection.
+  const globalScope = { document: pageDocument, frames: [] };
   globalThis.fetch = async (input, init) => {
     requestedUrls.push(String(input));
     return fetcher(String(input), init);
@@ -157,11 +167,11 @@ const loadContentApi = async ({ url, document: pageDocument, fetcher }) => {
   const DOMParser = class { parseFromString(html) { return dom(html); } };
   const source = await readFile(new URL('../src/content.js', import.meta.url), 'utf8');
   const factory = new Function(
-    'scanResources', 'collectUnitResources', 'describeSurface', 'AppError', 'errorResult',
+    'scanResources', 'collectUnitResources', 'parseUnitPageFrames', 'describeSurface', 'AppError', 'errorResult',
     'document', 'location', 'chrome', 'DOMParser', 'globalThis',
     source.replace(/^import[^\n]*$/gm, '') + '\nreturn globalThis.__BUCT_COURSE_V1__;'
   );
-  const api = factory(scanResources, collectUnitResources, describeSurface, AppError, errorResult,
+  const api = factory(scanResources, collectUnitResources, parseUnitPageFrames, describeSurface, AppError, errorResult,
     pageDocument, location, chrome, DOMParser, globalScope);
   return { api, sent, requestedUrls };
 };

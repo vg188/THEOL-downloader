@@ -3,7 +3,7 @@ import test from 'node:test';
 import { parseDirectory, parsePreview, courseTitle } from '../src/platform/parse.js';
 import { buildFilename, normalizeResourceUrl, validateFile } from '../src/platform/policy.js';
 import { parseSize, hasFileSignature, readBodySample } from '../src/platform/file-content.js';
-import { parseUnitPage, parseUnitIndex, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
+import { parseUnitPage, parseUnitPageFrames, parseUnitIndex, normalizeUnitEntryUrl, normalizeUnitPageUrl } from '../src/platform/unit.js';
 import { dom, listUrl, previewUrl, resource, preview, file, unitEntryUrl, unitPageUrl } from './helpers/dom.js';
 const code = value => error => error.code === value;
 test('list with extensionless names resolves actual PPT metadata', () => {
@@ -244,6 +244,30 @@ test('unit page with no valid anchors returns empty resources, non-unit URL retu
   const document = dom(`<a href="${unitEntryUrl()}">栏目</a><a href="https://course.buct.edu.cn/meol/buildless/resFolderViewList.do?columnId=41">文件夹</a>`);
   assert.deepEqual(parseUnitPage(document, unitPageUrl()).resources, []);
   assert.equal(parseUnitPage(document, listUrl), null);
+});
+
+test('unit surface aggregates courseware rendered by nested same-origin frames', () => {
+  const window = {
+    document: dom(unitAnchor(56)),
+    frames: [
+      { document: dom(`${unitAnchor(56)}${unitAnchor(57)}`), location: { href: listUrl } },
+      { document: dom(unitAnchor(58, 99)), location: { href: listUrl } },
+    ],
+  };
+  const unit = parseUnitPageFrames(window, unitPageUrl());
+  assert.deepEqual(unit.resources.map(item => item.id), ['12:78:56', '12:79:57']);
+});
+
+test('unit surface skips unreadable frames and non-unit pages', () => {
+  const window = {
+    document: dom(''),
+    frames: [Object.defineProperty({}, 'document', { get() { throw new Error('cross-origin'); } })],
+  };
+  const unit = parseUnitPageFrames(window, unitPageUrl());
+  assert.deepEqual(unit.resources, []);
+  assert.equal(unit.frameCount, 0);
+  assert.equal(parseUnitPageFrames({ document: dom(unitAnchor(56)) }, listUrl), null);
+  assert.equal(parseUnitPageFrames({}, unitPageUrl()), null);
 });
 
 test('unit index counts only the bounded list, not page-wide or navigation anchors', () => {

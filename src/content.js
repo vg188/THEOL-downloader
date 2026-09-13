@@ -1,14 +1,20 @@
 import { scanResources } from './platform/scan.js';
 import { collectUnitResources } from './platform/unit-scan.js';
+import { parseUnitPageFrames } from './platform/unit.js';
 import { describeSurface } from './platform/surface.js';
 import { AppError, errorResult } from './platform/policy.js';
 
 // This API lives in Chrome's isolated world, not in the website's JavaScript world.
 if (!globalThis.__BUCT_COURSE_V1__) {
   let activeController;
+  // A unit page may render its courseware inside a nested same-origin frame, so
+  // the unit surface is resolved from this frame and every readable frame below.
+  const describePage = () => describeSurface(document, location.href, {
+    parseUnitPage: (_document, pageUrl) => parseUnitPageFrames(globalThis, pageUrl),
+  });
   globalThis.__BUCT_COURSE_V1__ = {
     describe() {
-      return { url: location.href, title: document.title, surface: describeSurface(document, location.href) };
+      return { url: location.href, title: document.title, surface: describePage() };
     },
     cancel() {
       activeController?.abort();
@@ -25,7 +31,7 @@ if (!globalThis.__BUCT_COURSE_V1__) {
       const send = event => chrome.runtime.sendMessage({ type: 'SCAN_EVENT', scanId, event });
       const parseDocument = html => new DOMParser().parseFromString(html, 'text/html');
       try {
-        const surface = describeSurface(document, location.href);
+        const surface = describePage();
         if (!surface) throw new AppError('STALE_SCAN', '页面已切换，请重新扫描当前目录');
         if (!surface.modeOptions.includes(mode)) {
           throw new AppError('INVALID_MESSAGE', '当前页面不支持该扫描范围');

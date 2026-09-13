@@ -50,24 +50,56 @@ export function normalizeUnitPageUrl(input, expectedCourseId, base = ORIGIN) {
   return { courseId, url: canonical.href, layout };
 }
 
-export function parseUnitPage(document, pageUrl) {
-  let page;
-  try { page = normalizeUnitPageUrl(pageUrl); } catch { return null; }
+// A unit page's courseware may be rendered by the page itself or by a nested
+// same-origin frame (the layout that hosts the resource list), so the unit
+// surface aggregates every readable frame below it, parent first.
+export function previewResources(document, courseId, pageUrl) {
   const unique = new Map();
   for (const anchor of document.querySelectorAll('a[href]')) {
     if (isUnavailable(anchor)) continue;
     try {
       const parsed = normalizeResourceUrl(anchor.getAttribute('href'), 'preview', pageUrl);
       const url = new URL(parsed.url);
-      if (numericParam(url, 'lid') !== page.courseId || unique.has(parsed.id)) continue;
+      if (numericParam(url, 'lid') !== courseId || unique.has(parsed.id)) continue;
       unique.set(parsed.id, {
-        id: parsed.id, courseId: page.courseId, resId: parsed.resId, fileId: parsed.fileId,
+        id: parsed.id, courseId, resId: parsed.resId, fileId: parsed.fileId,
         previewUrl: parsed.url, title: anchor.textContent.replace(/\s+/g, ' ').trim().slice(0, 300) || '未命名资源',
         unit: { entryUrl: null, title: '当前单元', order: 0, occurrenceCount: 1 },
       });
     } catch { /* Unit navigation, controls and other-course links are not resources. */ }
   }
-  return { surface: 'unit-study', courseId: page.courseId, layout: page.layout, url: page.url, resources: [...unique.values()] };
+  return [...unique.values()];
+}
+
+export function parseUnitPage(document, pageUrl) {
+  let page;
+  try { page = normalizeUnitPageUrl(pageUrl); } catch { return null; }
+  return { surface: 'unit-study', courseId: page.courseId, layout: page.layout, url: page.url, resources: previewResources(document, page.courseId, pageUrl) };
+}
+
+export function parseUnitPageFrames(rootWindow, pageUrl) {
+  if (!rootWindow?.document) return null;
+  const page = parseUnitPage(rootWindow.document, pageUrl);
+  if (!page) return null;
+  const resources = page.resources, seen = new Set(resources.map(resource => resource.id));
+  let frames = 0;
+  for (const child of rootWindow.frames ?? []) {
+    let childDocument, childUrl;
+    try {
+      childDocument = child.document;
+      childUrl = child.location.href;
+      if (!childDocument) continue;
+      // Reading a frame's own anchors is independent of its page type: the
+      // courseware list frame is a listview page, not a unit page.
+      for (const resource of previewResources(childDocument, page.courseId, childUrl)) {
+        if (seen.has(resource.id)) continue;
+        seen.add(resource.id);
+        resources.push(resource);
+      }
+      frames++;
+    } catch { /* Cross-origin or unloaded frames hold no readable courseware. */ }
+  }
+  return { ...page, resources, frameCount: frames };
 }
 
 const canonicalEntryParams = (entryUrl) =>

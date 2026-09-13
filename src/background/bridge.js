@@ -22,12 +22,17 @@ function unitFailure(value) {
     code: String(value?.code || 'NETWORK').slice(0, 40), message: String(value?.message || '无法读取该单元').slice(0, 240) };
 }
 const courseIdOf = surface => surface.directory?.courseId || surface.unitPage?.courseId || '';
-// Frame selection: after the course filter the focused document decides, then
-// the deepest frame. Equal candidates stay ambiguous — never merge or guess.
+// Frame selection: a unit page owns the frames below it (its courseware list may
+// be rendered by a child), so a unit surface outranks a plain directory frame.
+// Within the winning kind the focused document decides, then the deepest frame.
+// Equal candidates stay ambiguous — never merge or guess.
 function activeFrame(candidates) {
   if (candidates.length === 1) return candidates[0];
-  const focused = candidates.filter(candidate => candidate.result.hasFocus === true);
-  const pool = focused.length ? focused : candidates;
+  const rank = candidate => candidate.result.surface.surface === 'unit-study' ? 1 : 0;
+  const best = Math.max(...candidates.map(rank));
+  const sameKind = candidates.filter(candidate => rank(candidate) === best);
+  const focused = sameKind.filter(candidate => candidate.result.hasFocus === true);
+  const pool = focused.length ? focused : sameKind;
   const depth = Math.max(...pool.map(candidate => count(candidate.result.depth)));
   const deepest = pool.filter(candidate => count(candidate.result.depth) === depth);
   if (deepest.length !== 1) throw new AppError('AMBIGUOUS_DIRECTORY', '页面有多个资源列表，请单独打开需要下载的目录');

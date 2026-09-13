@@ -212,7 +212,7 @@ test('the deepest frame resolves several candidates; focus outranks depth', asyn
   assert.equal((await deep.bridge.inspect(7)).context.frameId, 5);
   assert.equal((await deep.bridge.inspect(7)).context.unitKey, lessonUrl);
   const focused = unitHarness();
-  focused.frames[0].result.hasFocus = true;
+  focused.frames[0] = frame(0, 'shell', dom(lessonHtml), shellUrl, { hasFocus: true, depth: 0 });
   focused.frames[1].result.hasFocus = false;
   const shell = await focused.bridge.inspect(7);
   assert.equal(shell.context.frameId, 0);
@@ -220,6 +220,20 @@ test('the deepest frame resolves several candidates; focus outranks depth', asyn
   const tied = unitHarness();
   tied.frames.push(frame(6, 'unit2', dom(lessonHtml), lessonUrl, { hasFocus: true, depth: 1 }));
   await assert.rejects(tied.bridge.inspect(7), e => e.code === 'AMBIGUOUS_DIRECTORY');
+});
+
+test('a layout shell never steals the scan from the directory frame it hosts', async () => {
+  // The course layout page is an allowlisted unit URL, but when it holds no
+  // courseware and no unit list its content lives in a nested frame: the
+  // focused shell must not outrank that directory.
+  const h = harness([
+    frame(0, 'shell', dom('<nav>课程</nav>'), shellUrl, { hasFocus: true, depth: 0 }),
+    frame(3, 'doc3', dom(`<a href="${previewUrl()}">第一章</a>`), listUrl, { depth: 1, title: '资源' }),
+  ], 3);
+  const page = await h.bridge.inspect(7);
+  assert.equal(page.context.surface, 'resource-directory');
+  assert.equal(page.context.frameId, 3);
+  assert.deepEqual(page.context.resourceIds, ['12:78:56']);
 });
 
 test('all mode trusts only discovered IDs from the active unit frame', async () => {

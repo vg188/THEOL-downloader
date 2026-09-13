@@ -33,6 +33,10 @@ export function describeSurface(document, pageUrl, {
       // page itself remains a valid current-unit surface.
       if (!(error instanceof AppError)) throw error;
     }
+    // A lesson/newpage document with neither courseware nor a bounded unit list
+    // is a layout shell: its content lives in a nested frame, and that frame
+    // stays the scanned surface.
+    if (!unitIndex && !unitPage.resources.length) return null;
     return { surface: 'unit-study', modeOptions: unitIndex ? ['current', 'all'] : ['current'], unitPage, unitIndex };
   }
   return null;
