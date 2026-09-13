@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>隐私政策 · THEOL 课件下载工具</title>
+<meta name="description" content="THEOL 课件下载工具的隐私政策：不做上传、没有遥测、没有分析，只读取当前课件目录；非学校官方产品。">
+<link rel="stylesheet" href="{{basePath}}site.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<header class="site-header">
+  <p class="brand"><a href="{{basePath}}index.html">THEOL 课件下载工具</a></p>
+  <nav class="site-nav" aria-label="页面导航">
+    <a href="#summary">摘要</a>
+    <a href="#data">处理的数据</a>
+    <a href="#never">我们不做的事</a>
+    <a href="#requests">网络请求</a>
+    <a href="#permissions">权限</a>
+    <a href="#contact">源码与联系</a>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="privacy-title">
+    <p class="eyebrow">隐私政策</p>
+    <h1 id="privacy-title">你的课件不会离开学校站点</h1>
+    <p class="lede">本工具（书签轻量版与 Chrome 插件完整版）在你自己浏览器的当前页面里读取课件、打包并保存文件。<strong>不上传</strong>任何内容，<strong>没有遥测</strong>，没有统计、分析、广告或错误上报。</p>
+    <p class="disclaimer"><strong>非官方说明：</strong>本项目是学生自制的独立工具，<strong>不是北京化工大学官方产品</strong>，与学校及课程平台运营方没有隶属或授权关系。</p>
+  </section>
+
+  <section id="summary" class="section" aria-labelledby="summary-title">
+    <h2 id="summary-title">一句话摘要</h2>
+    <p>你点击下载之前，工具什么都不会做；你点击下载之后，工具只向 course.buct.edu.cn 请求你选中的课件，并在本机把它们保存到下载目录。数据不会发往其他地方。</p>
+  </section>
+
+  <section id="data" class="section" aria-labelledby="data-title">
+    <h2 id="data-title">处理哪些数据，为了什么</h2>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="data-title">
+      <table>
+        <caption class="visually-hidden">数据类型、处理目的与去向</caption>
+        <thead>
+          <tr><th scope="col">数据</th><th scope="col">用途</th><th scope="col">去向</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">当前课件目录的列表</th><td>显示可下载的 PDF / PPT / PPTX 及其大小</td><td>只在你打开的页面里，不离开本机</td></tr>
+          <tr><th scope="row">课件文件内容</th><td>打包 ZIP 或逐个保存到下载目录</td><td>直接从学校站点下载到你的浏览器</td></tr>
+          <tr><th scope="row">你已登录的会话</th><td>以你的身份读取你有权访问的课件</td><td>沿用浏览器已有的登录状态，不被读取或导出</td></tr>
+          <tr><th scope="row">文件名与大小</th><td>显示清单、判断 500 MB 规则、生成 ZIP 内文件名</td><td>只在本机内存中，不上传到任何服务器</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="never" class="section" aria-labelledby="never-title">
+    <h2 id="never-title">我们不做的事</h2>
+    <ul class="checklist">
+      <li><strong>不上传。</strong>课件、文件名、页面内容、下载地址都不会发往本项目或第三方的服务器；本项目没有后端，也没有中转或云存储。</li>
+      <li><strong>没有遥测。</strong>不含统计、分析、崩溃上报、错误 SDK、广告或任何“使用情况”上报。</li>
+      <li><strong>不读取密码、不导出 Cookie。</strong>工具不读取、不填充、不保存账号密码，也不会把登录 Cookie 复制到别处。</li>
+      <li><strong>不浏览其他内容。</strong>只处理你当前打开的那个课件目录里列出的文件，不会遍历其他课程、单元或个人页面。</li>
+      <li><strong>不绕过权限。</strong>工具不能下载你没有权限访问的课件，也不会尝试绕过平台限制。</li>
+    </ul>
+  </section>
+
+  <section id="requests" class="section" aria-labelledby="requests-title">
+    <h2 id="requests-title">网络请求</h2>
+    <ul class="checklist">
+      <li><strong>本页只加载本站文件。</strong>页面样式与脚本都来自本站静态资源，没有第三方 CDN、字体、统计或图片请求。</li>
+      <li><strong>书签不加载远程代码。</strong>拖到书签栏的代码是自包含的，点击时不会从本网站或任何 CDN 拉取脚本。</li>
+      <li><strong>只请求学校站点。</strong>扫描与下载只访问 course.buct.edu.cn 上你当前目录里列出的课件资源，且只在你点击之后发生。</li>
+    </ul>
+  </section>
+
+  <section id="permissions" class="section" aria-labelledby="permissions-title">
+    <h2 id="permissions-title">权限</h2>
+    <ul class="checklist">
+      <li><strong>书签轻量版：</strong>不需要任何扩展权限，只在你点击书签时执行一次页面脚本。</li>
+      <li><strong>Chrome 插件完整版：</strong>只申请 <code>scripting</code>、<code>downloads</code>、<code>storage</code> 与 <code>course.buct.edu.cn</code> 的站点访问权限，安装时由 Chrome 向你确认。</li>
+      <li><strong>本地下载：</strong>ZIP 与文件都保存在浏览器默认下载目录，不会同步到任何账号。</li>
+    </ul>
+  </section>
+
+  <section id="contact" class="section" aria-labelledby="contact-title">
+    <h2 id="contact-title">源码与联系</h2>
+    <p>全部代码公开在 <a href="https://github.com/vg188/THEOL-downloader">github.com/vg188/THEOL-downloader</a>，你可以自行审计、构建或提出问题。请在 <a href="https://github.com/vg188/THEOL-downloader/issues">问题反馈</a> 中报告隐私相关问题，不要附带课件内容、完整链接或账号信息。</p>
+    <p class="hint">本政策随功能变化更新，最新版本以本页与仓库提交记录为准。</p>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div>
+      <p class="footer-title">THEOL 课件下载工具</p>
+      <p>版本 {{releaseVersion}} · 书签 {{bookmarkletVersion}}</p>
+      <p>更新时间以仓库提交记录为准。</p>
+    </div>
+    <div>
+      <p><a href="{{basePath}}index.html">返回首页</a></p>
+      <p><a href="https://github.com/vg188/THEOL-downloader">源码仓库</a></p>
+      <p><a href="https://github.com/vg188/THEOL-downloader/issues">问题反馈</a></p>
+    </div>
+  </div>
+  <p class="footer-note">非北京化工大学官方产品，与学校及课程平台运营方无关。请遵守学校的课程资料使用规定。</p>
+</footer>
+</body>
+</html>

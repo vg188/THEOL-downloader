@@ -14,7 +14,9 @@
     "test:browser": "node --test tests/browser/*.test.js",
     "build:probe": "node scripts/build-probe.mjs",
     "test:probe": "node --test tests/probe*.test.js",
-    "test:bookmarklet": "node --test tests/bookmarklet/*.test.js"
+    "test:bookmarklet": "node --test tests/bookmarklet/*.test.js",
+    "build:site": "node scripts/build-site.mjs",
+    "test:site": "node --test tests/site.test.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

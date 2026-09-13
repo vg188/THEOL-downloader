@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THEOL 课件下载工具 · 书签轻量版与 Chrome 插件</title>
+<meta name="description" content="北京化工大学 THEOL 课程平台的课件下载辅助工具：可拖拽的自包含书签轻量版，以及 Chrome 插件完整版。全部在本机浏览器中运行，不上传课件、文件名或账号信息，非学校官方产品。">
+<link rel="stylesheet" href="{{basePath}}site.css">
+<script defer src="{{basePath}}site.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<header class="site-header">
+  <p class="brand">THEOL 课件下载工具</p>
+  <nav class="site-nav" aria-label="页面导航">
+    <a href="#install">安装</a>
+    <a href="#compare">版本对比</a>
+    <a href="#steps">三步安装</a>
+    <a href="#rules">500 MB 规则</a>
+    <a href="#privacy">隐私</a>
+    <a href="#faq">常见问题</a>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <p class="eyebrow">书签轻量版 · Chrome 插件完整版</p>
+    <h1 id="hero-title">把 THEOL 课件，一次性打包带走</h1>
+    <p class="lede">在课程平台“单元学习”的课件目录里点一下书签，工具会扫描当前目录、按格式筛选，并在你确认后把 PDF / PPT / PPTX 打包成一个 ZIP 下载。整个过程在你自己的浏览器中完成。</p>
+    <p class="disclaimer"><strong>非官方说明：</strong>本项目是学生自制的独立工具，<strong>不是北京化工大学官方产品</strong>，与学校及课程平台运营方没有隶属或授权关系。请遵守学校的课程资料使用规定，仅下载你有权访问的内容。</p>
+    <ul class="facts">
+      <li>只处理当前已登录的课件目录</li>
+      <li>不上传课件、文件名或账号信息</li>
+      <li>超过 500 MB 时改用逐个下载</li>
+    </ul>
+  </section>
+
+  <section id="install" class="section" aria-labelledby="install-title">
+    <h2 id="install-title">选择安装方式</h2>
+    <div class="cards">
+      <article class="card" aria-labelledby="bookmarklet-title">
+        <h3 id="bookmarklet-title">书签轻量版</h3>
+        <p>无需安装扩展，不需要开发者模式。把下面的按钮拖到浏览器书签栏即可使用；代码完整保存在书签本身里。</p>
+        <p class="actions">
+          <a id="bookmarklet-install" class="button button-primary" href="{{bookmarkletHref}}" draggable="true">拖到书签栏：THEOL 下载</a>
+          <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
+        </p>
+        <p id="copy-status" class="status" role="status" aria-live="polite"></p>
+        <p class="hint">桌面浏览器按 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>（macOS 为 <kbd>⌥</kbd> + <kbd>⌘</kbd> + <kbd>B</kbd>）显示书签栏，再把按钮拖进去。也可以右键按钮选择“复制链接地址”，然后手动新建一个书签，把这段代码粘贴到“网址”一栏。</p>
+        <p class="hint touch-only">书签轻量版需要桌面浏览器：手机和平板浏览器不支持把链接拖到书签栏，请改用完整版插件或桌面浏览器。</p>
+        <p class="hint"><strong>不要在本页点击这个按钮。</strong>它是给 THEOL 课件页使用的；安装方式是把链接拖到书签栏。</p>
+        <noscript><p class="hint">当前浏览器禁用了 JavaScript：“拖到书签栏”仍然可用，也可以右键按钮复制链接地址；只有“复制书签代码”按钮不可用。</p></noscript>
+      </article>
+
+      <article class="card" aria-labelledby="chrome-title">
+        <h3 id="chrome-title">Chrome 插件完整版</h3>
+        <p>支持后台队列、下载记录，关闭面板后继续下载。安装需要经过 Chrome 商店的权限确认。</p>
+        <p class="actions">{{chromeInstall}}</p>
+        <p class="hint">Chrome 已禁止普通网页静默安装扩展。按钮只会打开 Chrome 应用商店的详情页，由你确认权限后安装；本项目不分发自托管的 CRX 文件。开发者如需本地加载，请见源码仓库 README 中的“加载已解压的扩展程序”。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="compare" class="section" aria-labelledby="compare-title">
+    <h2 id="compare-title">版本对比</h2>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="compare-title">
+      <table>
+        <caption class="visually-hidden">书签轻量版与 Chrome 插件完整版的差异</caption>
+        <thead>
+          <tr><th scope="col">能力</th><th scope="col">书签轻量版</th><th scope="col">Chrome 插件完整版</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">安装方式</th><td>把链接拖到书签栏，无需扩展权限</td><td>经 Chrome 应用商店确认权限后安装</td></tr>
+          <tr><th scope="row">扫描与筛选</th><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td></tr>
+          <tr><th scope="row">打包 ZIP</th><td>在页面内存中打包，500 MB 以内</td><td>下载后打包，不受书签内存限制</td></tr>
+          <tr><th scope="row">后台队列</th><td>没有后台，任务在页面里运行</td><td>有队列，可同时排队多个任务</td></tr>
+          <tr><th scope="row">关闭面板后继续</th><td>不能，页面必须保持打开</td><td>可以，由扩展后台继续</td></tr>
+          <tr><th scope="row">下载记录</th><td>没有记录，每次重新扫描</td><td>保留本次浏览器会话的下载记录</td></tr>
+          <tr><th scope="row">适用场景</th><td>偶尔下载一两门课的课件，不想装扩展</td><td>经常下载、需要批量排队和历史记录</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="steps" class="section" aria-labelledby="steps-title">
+    <h2 id="steps-title">三步安装书签轻量版</h2>
+    <ol class="steps">
+      <li><strong>显示书签栏。</strong>按 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>（macOS 为 <kbd>⌥</kbd> + <kbd>⌘</kbd> + <kbd>B</kbd>）打开书签栏，把上面的按钮拖进书签栏。</li>
+      <li><strong>登录并进入课件目录。</strong>在浏览器里登录 course.buct.edu.cn，打开要下载的课程，进入“单元学习”中的课件页面。</li>
+      <li><strong>点击书签并确认。</strong>点击书签栏上的“THEOL 下载”，面板出现后点击“扫描当前目录”，勾选需要的文件，再在面板中确认下载。</li>
+    </ol>
+    <p class="hint">如果拖拽不方便：点击“复制书签代码”，在书签管理器中新建书签，名称填“THEOL 下载”，网址粘贴刚复制的代码。</p>
+  </section>
+
+  <section id="rules" class="section" aria-labelledby="rules-title">
+    <h2 id="rules-title">500 MB 规则、二次确认与保持页面打开</h2>
+    <div class="rules">
+      <article>
+        <h3>500 MB 以内：打包成一个 ZIP</h3>
+        <p>所选文件的已知总大小不超过 <strong>500 MB</strong>（500 × 1024 × 1024 字节）时，工具会在页面内存中把它们打包成一个 ZIP 文件，然后一次性交给你。</p>
+      </article>
+      <article>
+        <h3>超过 500 MB：改为逐个下载</h3>
+        <p>已知总大小超过 500 MB 时不会打包，而是进入逐个下载模式。Chrome 可能弹出“是否允许此网站下载多个文件”的询问，选择允许后才会继续。</p>
+      </article>
+      <article>
+        <h3>大小未知：同样按逐个下载处理</h3>
+        <p>平台没有报告字节数的文件会被标记为<strong>大小未知</strong>。只要选择中存在大小未知的文件，工具就不会打包，而是在确认界面写明“另有 N 个文件大小未知”，并按逐个下载处理。</p>
+      </article>
+      <article>
+        <h3>打包途中超过上限：销毁临时 ZIP</h3>
+        <p>如果打包过程中实际读取的数据超过 500 MB，工具会销毁尚未发布的临时 ZIP 并回到确认步骤，<strong>不会自动改成逐个下载</strong>；是否需要逐个下载由你再次确认。</p>
+      </article>
+      <article>
+        <h3>二次确认：先看清单，再触发下载</h3>
+        <p>点击书签只是打开面板，此时不会下载任何东西。扫描之后还需要在面板中确认一次——这是第二步确认（二次确认），确认后才会真正触发下载或打包。</p>
+      </article>
+      <article>
+        <h3>页面必须保持打开</h3>
+        <p>书签在页面里直接读取你已登录的课件内容，因此任务期间请保持该页面打开，<strong>不要刷新或关闭页面</strong>，否则任务会中断，失败的文件不会由后台恢复。</p>
+      </article>
+      <article>
+        <h3>“已触发”不等于“已完成”</h3>
+        <p>完成后面板报告的是“已触发 N/M 个下载”——它只说明浏览器已经收到这几个下载请求，<strong>不代表文件已经保存完成</strong>。是否真正下载成功，请查看浏览器自己的下载列表（<kbd>Ctrl</kbd> + <kbd>J</kbd>）。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="privacy" class="section" aria-labelledby="privacy-title">
+    <h2 id="privacy-title">隐私与权限</h2>
+    <ul class="checklist">
+      <li><strong>不上传。</strong>课件文件、文件名、页面内容和下载地址都不会离开学校站点，本项目没有服务器、没有中转、没有云盘。</li>
+      <li><strong>不收集。</strong>没有统计、没有分析、没有广告、没有错误上报，也不会把任何数据写入你的账号。</li>
+      <li><strong>不读取密码。</strong>工具不读取、不填充、不保存账号或密码，也不导出 Cookie。</li>
+      <li><strong>只处理当前目录。</strong>只读取你当前打开的那个课件目录里列出的 PDF / PPT / PPTX 文件，不浏览其他课程或页面。</li>
+      <li><strong>源码公开。</strong>全部代码都在 <a href="https://github.com/vg188/THEOL-downloader">github.com/vg188/THEOL-downloader</a>，可自行审计或本地构建。</li>
+    </ul>
+    <p class="hint">完整说明见 <a href="{{basePath}}privacy.html">隐私政策</a>。</p>
+  </section>
+
+  <section id="faq" class="section" aria-labelledby="faq-title">
+    <h2 id="faq-title">常见问题</h2>
+    <details>
+      <summary>点击书签后什么都没有发生</summary>
+      <p>先确认当前页面是 course.buct.edu.cn 上的课件目录，而不是其他网站或本地文件。如果页面策略阻止了书签脚本，面板不会出现，此时请改用完整版 Chrome 插件。</p>
+    </details>
+    <details>
+      <summary>在别的网站上点击了书签会怎样</summary>
+      <p>面板会照常出现，但那个页面里没有课件目录可读，扫描会以空结果或失败结束。工具不会读取该网站的内容，也不会向它发起请求；请在 course.buct.edu.cn 的课件目录里使用。</p>
+    </details>
+    <details>
+      <summary>面板里扫描不到文件</summary>
+      <p>请确认已经登录且课程页面没有跳转到登录页；再展开含有课件的单元，确保课件列表已经加载出来，然后重新点击“扫描当前目录”。</p>
+    </details>
+    <details>
+      <summary>浏览器拦截了多个文件的下载</summary>
+      <p>逐个下载模式会连续触发多个下载请求。请在地址栏右侧的提示里选择允许“下载多个文件”，否则除第一个以外的文件都会被拦下。</p>
+    </details>
+    <details>
+      <summary>为什么文件显示“大小未知”</summary>
+      <p>平台没有给出这些文件的字节数。为避免超出内存限制，只要选择里存在大小未知的文件，工具就改为逐个下载，而不是打包 ZIP。</p>
+    </details>
+    <details>
+      <summary>网页更新后书签会失效吗</summary>
+      <p>不会。书签代码是自包含的，安装之后不依赖本网站，本页更新也不会让已保存的书签失效。想使用新版本，重新拖一次按钮即可。</p>
+    </details>
+    <details>
+      <summary>手机上能用吗</summary>
+      <p>不能。手机和平板浏览器不支持把链接拖到书签栏，也无法在页面里加载书签脚本；请在桌面版 Chrome 或 Edge 上使用。</p>
+    </details>
+    <details>
+      <summary>想用完整版插件，但现在商店还在审核</summary>
+      <p>审核期间可以从源码仓库下载代码，用 Chrome 的“加载已解压的扩展程序”在开发者模式下本地加载。商店通过后，本页的按钮会变成“添加至 Chrome”。</p>
+    </details>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div>
+      <p class="footer-title">THEOL 课件下载工具</p>
+      <p>版本 {{releaseVersion}} · 书签 {{bookmarkletVersion}}</p>
+      <p>更新时间以仓库提交记录为准。</p>
+    </div>
+    <div>
+      <p><a href="https://github.com/vg188/THEOL-downloader">源码仓库</a></p>
+      <p><a href="https://github.com/vg188/THEOL-downloader/issues">问题反馈</a></p>
+      <p><a href="{{basePath}}privacy.html">隐私政策</a></p>
+    </div>
+  </div>
+  <p class="footer-note">非北京化工大学官方产品，与学校及课程平台运营方无关。请遵守学校的课程资料使用规定。</p>
+</footer>
+</body>
+</html>
