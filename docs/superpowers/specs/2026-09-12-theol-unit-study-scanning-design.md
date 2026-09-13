@@ -1,7 +1,9 @@
 # THEOL 单元学习双模式扫描设计
 
 **日期：** 2026-09-12  
-**状态：** 已批准  
+
+**状态：** 已批准；已实现于 Chrome 完整版与自包含书签轻量版。真实单文件下载验收待执行，证据状态见 `docs/verification.md`。
+
 **适用产品：** Chrome 完整版与自包含书签轻量版
 
 ## 1. 目标
@@ -13,7 +15,7 @@
 
 两个产品共享同一套纯解析和 URL 校验规则。功能不得下载课件正文来判断目录结构，不上传 URL、课程名、文件名、资源 ID、Cookie 或页面内容，也不得扩大到其他课程、站点、递归资源目录或自动翻页。
 
-## 2. 已验证事实与待验证事实
+## 2. 已验证事实与探针结论
 
 真实 THEOL 页面已经验证：
 
@@ -24,14 +26,15 @@
 - “单元学习”会在“第一次、第二次……”等单元中展示课件条目；
 - GitHub Pages 远程脚本被页面策略或网络阻止，因此轻量版必须保持自包含，不依赖远程运行时代码。
 
-仍需在实施前用只读结构探针确认：
+上述探针已于 2026-09-13 执行，结果记录在 `docs/unit-study-feasibility.md`，决策为 `UNIT_CURRENT_GO` 与 `UNIT_ALL_GO`：
 
-- 单元入口的实际 URL 约束；
-- 单元课件链接是现有 `download_preview.jsp`，还是另一种同源、可验证的预览路径；
-- 未展开单元是否可通过同源 GET 得到与当前单元等价的静态页面；
-- 页面声明的字符编码及单元标题位置。
+- 单元入口的实际 URL 约束：`/meol/jpk/course/course_column_preview_transfer.jsp`，查询键集合恰为 `columnId`、`tagbug`（`tagbug` 固定为 `client`）；
+- 单元课件链接就是现有的 `/meol/common/script/preview/download_preview.jsp`（键 `fileid`、`lid`、`resid`），不需要第二种预览路径；
+- 单元页面布局为 `/meol/jpk/course/layout/lesson/index.jsp` 或 `/meol/jpk/course/layout/newpage/index.jsp`，查询键恰为 `courseId`；
+- 页面按服务器声明的字符编码解析（真实页面实测为 GBK）；单元标题取单元入口链接的 `textContent`，并限制长度；
+- 另有同源辅助路由 `/meol/buildless/resFolderViewList.do`（键 `columnId`、`folderid`、`lid`）只被观察记录，未被采集为单元入口，实现不遍历、不请求该路由。
 
-探针只应输出布尔能力和非敏感的链接类型名称，不显示或上传实际 URL、查询参数、课程名、文件名、资源 ID 或响应正文。未确认路径时禁止猜测或拼装资源地址。
+探针只输出布尔能力和非敏感的链接类型名称，不显示或上传实际 URL、查询参数、课程名、文件名、资源 ID 或响应正文。未确认路径时禁止猜测或拼装资源地址。
 
 ## 3. 用户行为
 
@@ -79,11 +82,11 @@
 
 ### 5.2 解析器
 
-保留 `parseDirectory(document, pageUrl)` 作为课程资源适配器。新增独立的单元学习适配器，接口按探针结果最终定名，但职责固定：
+保留 `parseDirectory(document, pageUrl)` 作为课程资源适配器。新增独立的单元学习适配器，实现名已按探针结果定名：
 
-- `parseCurrentUnit(document, pageUrl)`：识别当前单元及其资源候选；
-- `parseUnitIndex(document, pageUrl)`：枚举当前课程中的单元入口；
-- `parseUnitPage(document, pageUrl, expectedCourse)`：验证单元响应并提取候选。
+- `parseUnitPage(document, pageUrl)`：验证单元页面 URL 属于允许列表，并提取当前单元的预览候选；课程匹配由候选预览链接的 `lid` 与页面 `courseId` 比较完成，不匹配的链接被忽略而不是报错。无可用候选时返回空的 `UnitPage`，非允许列表页面返回 `null`；
+- `previewResources(document, courseId, pageUrl)`：在一个单元文档内按首次出现顺序去重预览候选，单元页面可能由嵌套的同源 frame 承载资源列表；
+- `parseUnitIndex(document, pageUrl)`：枚举当前课程中的单元入口。
 
 三个函数均为无网络、无 `chrome.*`、不修改 DOM 的纯解析函数。它们只返回规范化的上下文和预览候选；文件名、格式、大小、原文件下载链接仍由共享的预览元数据解析器确定。
 
@@ -206,12 +209,14 @@ contextKey
 - 扩展和书签版对同一夹具产生相同候选集合；
 - 自包含书签产物不含远程运行时加载器、遥测或数据收集端点。
 
+以上合同已在完全合成的本地 HTML/字节夹具上通过（`npm test`、`npm run test:browser`、`npm run test:bookmarklet`、`npm run test:site`，见 `docs/verification.md` 的自动测试小节）。
+
 ### 11.2 真实页面门禁
 
 分两次、由用户主动执行：
 
-1. **只读结构探针：** 在一个当前单元和一个含多个单元的课程中确认入口路径、响应类型、元数据路径和字符编码；不请求课件正文。
-2. **下载验收：** 实现完成后，由用户选择自己有权访问的一份小型课件，分别从当前单元和全部单元结果触发下载，核对文件名、格式、可打开性和重复项行为。
+1. **只读结构探针：** 在一个当前单元和一个含多个单元的课程中确认入口路径、响应类型、元数据路径和字符编码；不请求课件正文。**已于 2026-09-13 执行，结论见第 2 节与 `docs/unit-study-feasibility.md`。**
+2. **下载验收：** 实现完成后，由用户选择自己有权访问的一份小型课件，分别从当前单元和全部单元结果触发下载，核对文件名、格式、可打开性和重复项行为。**截至 2026-09-13 该验收尚未执行**，不得在此之前声称单元模式已完成真实下载验证；执行后只在 `docs/verification.md` 记录脱敏结论。
 
 若结构探针发现单元学习没有稳定、可验证的同源入口，则“全部单元”暂停；不得退化为自动点击或猜测 URL。“当前单元”只有在当前 DOM 能提供经过现有安全策略验证的预览入口时才可交付。
 
