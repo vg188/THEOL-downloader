@@ -98,7 +98,7 @@ test('one failed unit keeps resources from the successful units', async () => {
 });
 
 const redirected = () => {
-  const response = new Response(unitHtml(56), { headers: { 'content-type': HTML } });
+  const response = withUrl(new Response(unitHtml(57), { headers: { 'content-type': HTML } }), unitPageUrl('lesson', 12));
   Object.defineProperty(response, 'redirected', { value: true });
   return response;
 };
@@ -114,8 +114,14 @@ const folderListing = () => withUrl(
   new Response(unreadableBody(), { headers: { 'content-type': HTML } }),
   `${ORIGIN}/meol/common/script/resFolderViewList.do?courseId=12`,
 );
-const stuckAtEntry = () => withUrl(
+const otherLayout = () => withUrl(
   new Response(unreadableBody(), { headers: { 'content-type': HTML } }),
+  `${ORIGIN}/meol/jpk/course/layout/other/index.jsp?courseId=12`,
+);
+// The entry route also renders the unit at its own URL: that response is the
+// unit page, so its courseware must be read instead of rejected.
+const stuckAtEntry = () => withUrl(
+  new Response(unitHtml(56), { headers: { 'content-type': HTML } }),
   entryUrl(1),
 );
 const loginPage = () => withUrl(
@@ -135,16 +141,15 @@ const oversized = () => withUrl(
 const rejections = [
   ['opaque redirect', () => ({ type: 'opaqueredirect', status: 0 }), 'LOGIN_REQUIRED'],
   ['status 0', () => ({ type: 'cors', status: 0 }), 'LOGIN_REQUIRED'],
-  ['redirected 200', redirected, 'LOGIN_REQUIRED'],
   ['status 401', () => new Response(null, { status: 401 }), 'LOGIN_REQUIRED'],
   ['server error', () => new Response(null, { status: 500 }), 'NO_DOWNLOAD'],
   ['cross-origin final url', foreignLesson, 'LOGIN_REQUIRED'],
   ['wrong course id', wrongCourse, 'LOGIN_REQUIRED'],
   ['folder listing url', folderListing, 'LOGIN_REQUIRED'],
+  ['other layout url', otherLayout, 'LOGIN_REQUIRED'],
   ['login page html', loginPage, 'LOGIN_REQUIRED'],
   ['unsupported charset', badCharset, 'BAD_FILE'],
   ['oversized body', oversized, 'BAD_FILE'],
-  ['final url stuck at entry url', stuckAtEntry, 'INVALID_URL'],
 ];
 
 for (const [name, buildResponse, code] of rejections) test(`unit page rejected: ${name}`, async () => {
@@ -159,6 +164,26 @@ for (const [name, buildResponse, code] of rejections) test(`unit page rejected: 
   assert.equal(result.entriesProcessed, 2);
   assert.ok(!JSON.stringify(result.failures).includes('evil.test'), 'no raw URL leakage');
   assert.ok(!JSON.stringify(result.failures).includes('body must not be read'), 'no raw body leakage');
+});
+
+for (const [name, buildResponse, id] of [
+  ['platform transferred to a lesson layout', redirected, '12:78:57'],
+  ['platform rendered the unit at the entry url', stuckAtEntry, '12:78:56'],
+]) test(`unit entry accepted: ${name}`, async () => {
+  const seen = [];
+  const result = await collectUnitResources(index(1), {
+    fetcher: async (url, options) => { seen.push(options); return buildResponse(); },
+    parseDocument: dom,
+  });
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(result.resources.map(resource => resource.id), [id]);
+  // The owning unit travels with the resource, so duplicates can be reported per unit.
+  assert.equal(result.resources[0].unit.title, '第1次课');
+  assert.equal(result.resources[0].unit.entryUrl, entryUrl(1));
+  assert.equal(result.resources[0].unit.occurrenceCount, 1);
+  // Credentials are attached and the request follows the platform's own transfer.
+  assert.equal(seen[0].credentials, 'include');
+  assert.equal(seen[0].redirect, 'follow');
 });
 
 test('oversized bodies fail on size before any charset decoding is attempted', async () => {

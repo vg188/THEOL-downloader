@@ -1,6 +1,6 @@
 import { AppError, errorResult } from './policy.js';
 import { withDeadline, readHtmlResponse } from './network.js';
-import { normalizeUnitPageUrl, parseUnitPage } from './unit.js';
+import { normalizeUnitPageUrl, previewResources } from './unit.js';
 
 const LOGIN_TITLE = /登录|登陆|统一身份认证|sign\s*in|log\s*in/i;
 
@@ -24,22 +24,20 @@ export async function collectUnitResources(index, {
       try {
         unitResult = await withDeadline(async requestSignal => {
           const response = await fetcher(entry.entryUrl, {
-            credentials: 'include', redirect: 'manual', signal: requestSignal,
+            credentials: 'include', redirect: 'follow', signal: requestSignal,
           });
-          if (response.type === 'opaqueredirect' || response.status === 0 || response.redirected || response.status === 401) {
+          if (response.type === 'opaqueredirect' || response.status === 0 || response.status === 401) {
             throw new AppError('LOGIN_REQUIRED', '登录已失效或页面发生跳转，请重新登录后扫描');
           }
           if (!response.ok) throw new AppError('NO_DOWNLOAD', '单元页面无法访问，请确认登录状态和课程权限');
-          // The observed entry route renders content directly, so any final-URL
-          // change is anomalous and fails as a redirect-equivalent. The body is
-          // never read before the final URL is an allowlisted unit page of the
-          // current course; the canonical entry URL itself is not a redirect,
-          // but it still fails the unit-page allowlist.
-          let page;
-          try { page = normalizeUnitPageUrl(response.url, index.courseId); }
-          catch (error) {
-            if (response.url === entry.entryUrl) throw error;
-            throw new AppError('LOGIN_REQUIRED', '登录已失效或页面发生跳转，请重新登录后扫描');
+          // The entry route has two legitimate shapes: it renders the unit at its
+          // own URL, or the platform transfers to a lesson/newpage layout. Any
+          // other final URL — login, error, another JSP, another host — is refused
+          // here, before the body is read.
+          let pageUrl = entry.entryUrl;
+          if (response.url !== entry.entryUrl) {
+            try { pageUrl = normalizeUnitPageUrl(response.url, index.courseId).url; }
+            catch { throw new AppError('LOGIN_REQUIRED', '登录已失效或页面发生跳转，请重新登录后扫描'); }
           }
           const html = await readHtmlResponse(response, {
             signal: requestSignal,
@@ -50,7 +48,10 @@ export async function collectUnitResources(index, {
           if (LOGIN_TITLE.test(document.title || '')) {
             throw new AppError('LOGIN_REQUIRED', '登录已失效，请在教学平台重新登录后扫描');
           }
-          return { entry, unit: parseUnitPage(document, page.url) };
+          // Courseware is read from the transferred document itself: a fetched
+          // response has no frame tree, so a unit that renders its list in a
+          // nested frame is covered by the current-unit scan instead.
+          return { entry, unit: { resources: previewResources(document, index.courseId, pageUrl) } };
         }, { timeoutMs, signal });
       } catch (error) {
         failure = { kind: 'unit', columnId: entry.columnId, title: entry.title, ...errorResult(error) };
