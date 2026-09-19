@@ -1,5 +1,9 @@
-name: Deploy bookmarklet feasibility probe
+name: Deploy website
 
+# The published artifact is the built website plus the self-contained bookmarklet
+# embedded in it. Nothing else may reach Pages: no extension bundle, no probe page,
+# no browser profiles or downloaded courseware. The bookmarklet loads no remote
+# runtime, so publishing this site cannot break a bookmark someone already saved.
 on:
   push:
     branches: [codex/bookmarklet-probe]
@@ -9,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-probe
+  group: pages-site
   cancel-in-progress: true
 
 jobs:
@@ -22,12 +26,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:probe
-      - run: npm run build:probe
+      # `npm test` covers the source suites, including the site build assertions:
+      # the site is only deployed from a tree whose own checks pass.
+      - run: npm test
+      - run: npm run test:bookmarklet
+      - run: npm run build:site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/probe
+          path: dist/site
   deploy:
     environment:
       name: github-pages
@@ -38,6 +45,6 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - name: Deploy probe
+      - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v4
