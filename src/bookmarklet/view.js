@@ -356,6 +356,9 @@ export function mountBookmarklet({ window: pageWindow = globalThis, controller, 
     shadowRoot: root,
     getSnapshot: () => controller.getSnapshot(),
     show: () => { controller.show(); },
+    // Diagnostics stay a method, not a rendered control: the panel belongs to
+    // students, this handle belongs to whoever is debugging in the console.
+    diagnose: () => controller.diagnose(),
     destroy: () => {
       if (destroyed) return;
       destroyed = true;

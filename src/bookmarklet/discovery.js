@@ -88,34 +88,82 @@ export function surfaceContext(surface, { courseName = '', document = null, loca
 }
 
 /**
- * Resolves the one surface this bookmarklet may scan, as `{ context, surface }`
- * — the extension's `describe()` contract without `chrome.*`.
+ * Everything both the surface resolver and the diagnostics need, so the panel's
+ * error text and the diagnostics can never disagree about one page.
  *
- * The top-level document owns the course context, exactly like the tab URL the
- * extension inspects: a page we cannot reach, or one outside the platform, is
- * unsupported rather than guessed at. Every readable frame below it is
- * classified with the shared `describeSurface`, and a unit frame aggregates its
- * own nested frames through `parseUnitPageFrames`.
+ * `rejected` counts the frames that were readable but unusable: a page with many
+ * frames and zero candidates is a different repair from one with an ambiguous
+ * second list, and only these counts can tell them apart without exposing the
+ * page's own content.
  */
-export function discoverSurface(rootWindow) {
+function collectPage(rootWindow) {
   const top = topWindow(rootWindow);
-  let topUrl;
-  try { topUrl = schoolUrl(top?.location?.href); } catch { throw new AppError('UNSUPPORTED_PAGE', UNSUPPORTED_MESSAGE); }
+  let topUrl = null;
+  try { topUrl = schoolUrl(top?.location?.href); } catch { topUrl = null; }
+  if (!topUrl) return { top, topUrl, frames: [], expectedCourse: null, candidates: [], rejected: { unrecognised: 0, otherCourse: 0 } };
+  const frames = sameOriginFrames(top);
   const expectedCourse = topUrl.searchParams.get('courseId');
   const candidates = [];
-  for (const frame of sameOriginFrames(top)) {
+  const rejected = { unrecognised: 0, otherCourse: 0 };
+  for (const frame of frames) {
     // The unit parser owns the frame-tree rule; it reads frames as a list, so it
     // receives this frame's readable children rather than the frame collection.
     const unitWindow = { document: frame.document, frames: framesOf(frame.window) };
     const surface = describeSurface(frame.document, frame.url, {
       parseUnitPage: (_document, pageUrl) => parseUnitPageFrames(unitWindow, pageUrl),
     });
-    if (!surface) continue;
+    if (!surface) { rejected.unrecognised++; continue; }
     const courseId = surface.directory?.courseId || surface.unitPage?.courseId || '';
-    if (expectedCourse && courseId !== expectedCourse) continue;
+    if (expectedCourse && courseId !== expectedCourse) { rejected.otherCourse++; continue; }
     candidates.push({ surface, document: frame.document, location: frame.url });
   }
+  return { top, topUrl, frames, expectedCourse, candidates, rejected };
+}
+
+/**
+ * Resolves the one surface this bookmarklet may scan, as `{ context, surface }`
+ * — the extension's `describe()` contract without `chrome.*`.
+ *
+ * The top-level document owns the course context, exactly like the tab URL the
+ * extension inspects: a page we cannot reach, or one outside the platform, is
+ * unsupported rather than guessed at.
+ */
+export function discoverSurface(rootWindow) {
+  const { top, topUrl, expectedCourse, candidates } = collectPage(rootWindow);
+  if (!topUrl) throw new AppError('UNSUPPORTED_PAGE', UNSUPPORTED_MESSAGE);
   const { surface, document, location } = winningSurface(candidates);
   const courseName = courseTitle(String(top.document?.title || ''));
   return { context: surfaceContext(surface, { courseName, document, location }), surface };
+}
+
+/**
+ * A de-identified description of what this bookmarklet can see, for the panel's
+ * diagnostics. Nothing here may carry a course id, resource id, file name, page
+ * title or query string: only counts, frame paths and recognised surface kinds,
+ * so the report is safe to paste into an issue.
+ */
+export function describePage(rootWindow) {
+  // "Are we on the platform?" is answered before the page is walked, so a probe
+  // that dies halfway still reports where the user is standing.
+  let supported = false;
+  try { supported = Boolean(schoolUrl(topWindow(rootWindow)?.location?.href)); } catch { supported = false; }
+  const empty = { supported, frameCount: 0, framePaths: [], candidates: [], rejected: { unrecognised: 0, otherCourse: 0 }, topHasCourseId: false, error: null };
+  let collected;
+  try {
+    collected = collectPage(rootWindow);
+  } catch (error) {
+    return { ...empty, error: { code: error?.code ?? 'ERROR', message: String(error?.message ?? error) } };
+  }
+  const pathOf = href => { try { return new URL(href).pathname; } catch { return ''; } };
+  return {
+    // Only a page whose top is the platform has anything to report.
+    supported: Boolean(collected.topUrl),
+    frameCount: collected.frames.length,
+    framePaths: collected.frames.map(frame => pathOf(frame.url)).filter(Boolean),
+    candidates: collected.candidates.map(candidate => candidate.surface.surface),
+    rejected: { ...collected.rejected },
+    // Never the value: only whether the top-level URL pinned a course.
+    topHasCourseId: Boolean(collected.expectedCourse),
+    error: null,
+  };
 }

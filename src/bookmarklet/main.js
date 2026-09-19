@@ -6,7 +6,7 @@ import { AppError } from '../platform/policy.js';
 import { archiveFiles } from './archive.js';
 import { createBookmarkletController } from './controller.js';
 import { downloadDirect } from './direct-download.js';
-import { discoverSurface } from './discovery.js';
+import { discoverSurface, describePage } from './discovery.js';
 import { createBookmarkletScanner } from './scanner.js';
 import { mountBookmarklet } from './view.js';
 
@@ -59,6 +59,9 @@ export function createRuntimeController({
     // Surface recognition reads the page's own DOM: a bookmarklet cannot
     // inspect a tab, so the shared parsers run in the page's world.
     inspect: () => discoverSurface(pageWindow),
+    // Diagnostics read the same page walk as the inspector, so a report can
+    // never describe a different page than the one the panel rejected.
+    describe: () => describePage(pageWindow),
     scan: ({ mode, onProgress }) => scanner.scan(pageWindow, { mode }, onProgress),
     cancelScan: () => scanner.cancel(),
     archiveFiles: (files, { signal, onProgress }) => archive(files, {

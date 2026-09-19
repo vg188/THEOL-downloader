@@ -1,5 +1,6 @@
 import { AppError, errorResult } from '../platform/policy.js';
 import { createSelection, formatBytes } from '../popup/model.js';
+import { BOOKMARKLET_BUILD, BOOKMARKLET_VERSION, bookmarkletStamp } from './version.js';
 import { ZIP_LIMIT_BYTES, planDownload } from './download-plan.js';
 
 const BUSY = new Set(['scanning', 'archiving', 'direct-downloading']);
@@ -113,14 +114,24 @@ export function createBookmarkletController(dependencies = {}) {
   function refreshPage() {
     if (typeof dependencies.inspect !== 'function' || task) return false;
     let next = null;
-    try { next = dependencies.inspect() ?? null; } catch { next = null; }
-    if (samePage(inspected, next)) return false;
+    // Inspection is where "this page has two lists" and "this frame belongs to
+    // another course" are decided. The reason used to be swallowed, which left
+    // the user with a generic prompt and nothing to act on; it is now carried
+    // into the panel's error slot so the real repair is visible.
+    let inspectionError = null;
+    try { next = dependencies.inspect() ?? null; } catch (error) { inspectionError = errorResult(error); }
+    if (samePage(inspected, next)) {
+      // Two consecutive failures compare equal, so identity alone would hide the
+      // reason forever: report once, then leave the panel alone.
+      if (inspectionError && failure?.code !== inspectionError.code) { failure = inspectionError; return true; }
+      return false;
+    }
     inspected = next;
     const modes = availableModes();
     if (modes.length && !modes.includes(mode)) mode = 'current';
     selection.clear();
     confirmation = null;
-    failure = null;
+    failure = inspectionError;
     notice = '';
     progress = null;
     result = null;
@@ -523,5 +534,40 @@ export function createBookmarkletController(dependencies = {}) {
     return () => listeners.delete(listener);
   }
 
-  return { getSnapshot, subscribe, scan, setScanMode, confirmAllUnits, setQuery, setFormat, toggle, requestDownload, confirm, cancel, hide, show };
+  /**
+   * A de-identified snapshot of the panel and the page it sees, for bug reports.
+   *
+   * It deliberately carries no course name, file name, resource id or URL query:
+   * counts, surface kinds, frame paths and the last error code are enough to
+   * tell "wrong page" apart from "ambiguous frames" or "frame belongs to another
+   * course", and nothing in it needs redacting before it is pasted anywhere.
+   * Diagnostics must never break the panel, so its own page probe is guarded.
+   */
+  function diagnose() {
+    const files = scanFiles();
+    let page = null;
+    if (typeof dependencies.describe === 'function') {
+      try { page = dependencies.describe(); } catch (error) { page = { error: String(error?.message ?? error) }; }
+    }
+    return Object.freeze({
+      version: BOOKMARKLET_VERSION,
+      build: BOOKMARKLET_BUILD,
+      stamp: bookmarkletStamp(),
+      state,
+      visible,
+      mode,
+      modes: Object.freeze(availableModes()),
+      surface: inspected?.surface?.surface ?? scanned?.context?.surface ?? null,
+      unitCount: inspected?.surface?.unitIndex?.entries?.length ?? units.total,
+      fileCount: files.length,
+      visibleCount: selection.visible(files, query, format).length,
+      selectedCount: selection.selectedIds().length,
+      failureCount: Array.isArray(scanned?.failures) ? scanned.failures.length : 0,
+      unitFailureCount: Array.isArray(scanned?.unitFailures) ? scanned.unitFailures.length : 0,
+      error: failure,
+      page,
+    });
+  }
+
+  return { getSnapshot, subscribe, scan, setScanMode, confirmAllUnits, setQuery, setFormat, toggle, requestDownload, confirm, cancel, hide, show, diagnose };
 }

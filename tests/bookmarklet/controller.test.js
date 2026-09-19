@@ -44,7 +44,7 @@ function harness(options = {}) {
     }),
   };
   if (options.inspect) deps.inspect = options.inspect;
-  if (options.deliverArchive) deps.deliverArchive = async value => { calls.deliver.push(value); };
+  if (options.deliverArchive) deps.deliverArchive = async value => { calls.deliver.push(value); return options.deliverArchive(value); };
   const controller = createBookmarkletController(deps);
   return { controller, calls, files, deps };
 }
@@ -187,6 +187,47 @@ test('an optional delivery hook receives the archive result exactly once', async
   assert.equal(calls.deliver.length, 1);
   assert.equal(calls.deliver[0].name, '课件.zip');
   assert.equal(controller.getSnapshot().state, 'done');
+});
+
+// Delivery is the last step the user actually sees (saving the blob, handing the
+// file to the browser), and it is the only archive step that can fail after the
+// bytes are already built.
+test('a delivery failure reports its reason instead of reporting success', async () => {
+  const { controller, calls, files } = harness({
+    files: [file(1, MiB)],
+    deliverArchive: () => { throw new AppError('DOWNLOAD_FAILED', '浏览器拒绝了这次下载'); },
+  });
+  await controller.scan();
+  controller.toggle(files[0].id, true);
+  controller.requestDownload();
+  await controller.confirm();
+  const snapshot = controller.getSnapshot();
+  assert.equal(snapshot.state, 'error');
+  assert.deepEqual(snapshot.error, { code: 'DOWNLOAD_FAILED', message: '浏览器拒绝了这次下载' });
+  assert.equal(snapshot.result, null, 'a package that never arrived is not a result');
+  assert.equal(snapshot.busy, false, 'the panel is not stuck on a task that ended');
+  assert.equal(calls.deliver.length, 1);
+});
+
+test('a delivery failure after a cancel cannot overwrite the cancelled panel', async () => {
+  let rejectDelivery;
+  const { controller, calls, files } = harness({
+    files: [file(1, MiB)],
+    deliverArchive: () => new Promise((_, reject) => { rejectDelivery = reject; }),
+  });
+  await controller.scan();
+  controller.toggle(files[0].id, true);
+  controller.requestDownload();
+  const pending = controller.confirm();
+  // The delivery hook is reached one microtask after the archive is built, so
+  // the cancel has to land while it is genuinely in flight.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls.deliver.length, 1);
+  controller.cancel();
+  rejectDelivery(new AppError('DOWNLOAD_FAILED', '浏览器拒绝了这次下载'));
+  await pending;
+  assert.equal(controller.getSnapshot().state, 'cancelled');
+  assert.equal(controller.getSnapshot().error, null);
 });
 
 test('confirm-direct triggers serial downloads exactly once and never archives', async () => {
