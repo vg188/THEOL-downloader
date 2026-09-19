@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
-import { buildBookmarkletBundle, assertSafeArtifact, buildSite, readSiteConfig, renderIndexPage } from '../scripts/build-site.mjs';
+import { buildBookmarkletBundle, assertSafeArtifact, assertSingleReleaseVersion, bookmarkletBuildStamp, buildSite, readSiteConfig, renderIndexPage } from '../scripts/build-site.mjs';
+import { BOOKMARKLET_VERSION } from '../src/bookmarklet/version.js';
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const siteRoot = join(projectRoot, 'site');
@@ -47,6 +48,52 @@ test('可拖拽书签是真实链接，href 就是完整的自包含 bundle', as
   assert.equal(install.getAttribute('href'), `javascript:${bundle}`);
   assert.ok(payload.includes('__THEOL_DOWNLOADER_BOOKMARKLET_V1__'));
   assert.match(install.textContent, /拖到书签栏/);
+});
+
+test('书签自带版本与构建日期，旧书签能被认出来', () => {
+  assert.match(payload, /1\.0\.1/, 'bundle carries the release version');
+  // Stamped at build time, so the same release built twice is still distinguishable.
+  assert.match(payload, new RegExp(bookmarkletBuildStamp()), 'bundle carries a build date');
+  assert.match(bookmarkletBuildStamp(new Date(2026, 0, 5)), /^2026-01-05$/);
+});
+
+test('页面显示的书签版本就是书签自带的版本', () => {
+  const shown = indexDoc.querySelector('#bookmarklet-stamp').textContent.trim();
+  assert.equal(shown, `v${BOOKMARKLET_VERSION} (${bookmarkletBuildStamp()})`);
+  assert.equal(indexDoc.querySelector('.site-footer').textContent.includes(shown), true, '页脚与安装卡片同一行');
+  assert.equal(privacyDoc.querySelector('.site-footer').textContent.includes(shown), true, '隐私页同一行');
+  // The one date both sides use: the page cannot advertise a build the anchor lacks.
+  for (const part of [BOOKMARKLET_VERSION, bookmarkletBuildStamp()]) {
+    assert.ok(payload.includes(part), `书签里没有带上页面显示的 ${part}`);
+  }
+});
+
+test('四处版本号不一致时拒绝构建，一致时返回该版本', async () => {
+  const scratch = await mkdtemp(join(tmpdir(), 'site-version-'));
+  try {
+    await mkdir(join(scratch, 'public'), { recursive: true });
+    const written = async version => {
+      await writeFile(join(scratch, 'package.json'), JSON.stringify({ version }), 'utf8');
+      await writeFile(join(scratch, 'public', 'manifest.json'), JSON.stringify({ version }), 'utf8');
+    };
+    await written(BOOKMARKLET_VERSION);
+    assert.equal(await assertSingleReleaseVersion({ projectRoot: scratch, config }), BOOKMARKLET_VERSION);
+    await written('9.9.9');
+    await assert.rejects(
+      () => assertSingleReleaseVersion({ projectRoot: scratch, config }),
+      /版本号不一致.*package\.json=9\.9\.9.*site\/config\.json/,
+    );
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test('书签自带诊断入口，方便在真实页面上排查', () => {
+  // `diagnose` is mounted on the panel global; it must survive minification as a
+  // property name, otherwise there is no way to debug a real page.
+  assert.ok(payload.includes('diagnose'), 'bundle exposes the diagnostics handle');
+  assert.ok(payload.includes('AMBIGUOUS_DIRECTORY'), 'bundle keeps the reason codes');
+  assert.ok(payload.includes('NO_DIRECTORY'));
 });
 
 test('书签 payload 不加载任何远程运行时', () => {
@@ -100,7 +147,7 @@ test('非法商店链接与非法的 basePath 会被拒绝，配置不会被改�
   assert.throws(() => readSiteConfig({ ...base, releaseVersion: 'v1' }), /releaseVersion/);
   const onDisk = JSON.parse(await readFile(join(siteRoot, 'config.json'), 'utf8'));
   assert.equal(onDisk.chromeWebStoreUrl, null);
-  assert.deepEqual(Object.keys(onDisk).sort(), ['basePath', 'bookmarkletVersion', 'chromeWebStoreUrl', 'releaseVersion']);
+  assert.deepEqual(Object.keys(onDisk).sort(), ['basePath', 'chromeWebStoreUrl', 'releaseVersion']);
 });
 
 test('站点文案说明 500 MB 规则、二次确认、保持页面打开与“已触发 ≠ 已完成”', () => {

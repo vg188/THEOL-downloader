@@ -47,6 +47,7 @@
           <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
         </p>
         <p id="copy-status" class="status" role="status" aria-live="polite"></p>
+        <p class="hint">本页当前提供的书签版本：<code id="bookmarklet-stamp">{{bookmarkletStamp}}</code>。这个日期已经打包在书签代码里，重新拖一次按钮就会替换成这一版。</p>
         <p class="hint">桌面浏览器按 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>（macOS 为 <kbd>⌥</kbd> + <kbd>⌘</kbd> + <kbd>B</kbd>）显示书签栏，再把按钮拖进去。也可以右键按钮选择“复制链接地址”，然后手动新建一个书签，把这段代码粘贴到“网址”一栏。</p>
         <p class="hint touch-only">书签轻量版需要桌面浏览器：手机和平板浏览器不支持把链接拖到书签栏，请改用完整版插件或桌面浏览器。</p>
         <p class="hint"><strong>不要在本页点击这个按钮。</strong>它是给 THEOL 课件页使用的；安装方式是把链接拖到书签栏。</p>
@@ -164,6 +165,7 @@
     <details>
       <summary>网页更新后书签会失效吗</summary>
       <p>不会。书签代码是自包含的，安装之后不依赖本网站，本页更新也不会让已保存的书签失效。想使用新版本，重新拖一次按钮即可。</p>
+      <p>想知道手上的书签是哪一版：在课件页按 <kbd>F12</kbd> 打开控制台，先点一次书签让面板出现，再执行 <code>copy(__THEOL_DOWNLOADER_BOOKMARKLET_V1__.diagnose())</code>，把结果粘贴到别处就能看到 <code>stamp</code> 字段，与本页“书签版本”旁的日期对照即可。这段诊断信息不含课程名、课件文件名和账号信息。</p>
     </details>
     <details>
       <summary>手机上能用吗</summary>
@@ -180,7 +182,7 @@
   <div class="footer-grid">
     <div>
       <p class="footer-title">THEOL 课件下载工具</p>
-      <p>版本 {{releaseVersion}} · 书签 {{bookmarkletVersion}}</p>
+      <p>版本 {{releaseVersion}} · 书签 {{bookmarkletStamp}}</p>
       <p>更新时间以仓库提交记录为准。</p>
     </div>
     <div>

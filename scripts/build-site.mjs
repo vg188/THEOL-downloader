@@ -10,6 +10,7 @@ import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSelfContainedBookmarklet } from '../src/bookmarklet/bootstrap.js';
+import { BOOKMARKLET_VERSION, bookmarkletStamp } from '../src/bookmarklet/version.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,15 +53,38 @@ export function readSiteConfig(source) {
   }
   const releaseVersion = requireString(config.releaseVersion, 'releaseVersion');
   if (!VERSION.test(releaseVersion)) fail('config.releaseVersion 必须是 x.y.z 形式');
-  const bookmarkletVersion = requireString(config.bookmarkletVersion, 'bookmarkletVersion');
   const { chromeWebStoreUrl } = config;
   if (chromeWebStoreUrl !== null && !STORE_URL.test(String(chromeWebStoreUrl))) {
     fail('config.chromeWebStoreUrl 必须是 https://chromewebstore.google.com/detail/<slug>/<32 位扩展 ID> 或 null');
   }
   return Object.freeze({
-    basePath, releaseVersion, bookmarkletVersion,
+    basePath, releaseVersion,
     chromeWebStoreUrl: chromeWebStoreUrl === null ? null : String(chromeWebStoreUrl),
   });
+}
+
+/**
+ * The release number is written down in four places — `package.json`,
+ * `public/manifest.json`, `site/config.json` and the bookmarklet's own module —
+ * and a page that shows a stale one misleads every visitor at once. `buildSite`
+ * is the only step that reads all four, so it is where they are required to agree.
+ */
+export async function assertSingleReleaseVersion({ projectRoot = root, config } = {}) {
+  const [pkg, manifest] = await Promise.all([
+    readFile(join(projectRoot, 'package.json'), 'utf8'),
+    readFile(join(projectRoot, 'public', 'manifest.json'), 'utf8'),
+  ]);
+  const declared = {
+    'package.json': JSON.parse(pkg).version,
+    'public/manifest.json': JSON.parse(manifest).version,
+    'site/config.json': config.releaseVersion,
+    'src/bookmarklet/version.js': BOOKMARKLET_VERSION,
+  };
+  const versions = [...new Set(Object.values(declared))];
+  if (versions.length > 1) {
+    fail(`版本号不一致：${Object.entries(declared).map(([file, value]) => `${file}=${value}`).join('、')}`);
+  }
+  return versions[0];
 }
 
 function escapeAttribute(value) {
@@ -95,27 +119,27 @@ function render(template, values) {
 }
 
 /** Renders the landing page. Pure, so both store states are testable in memory. */
-export function renderIndexPage({ template, config, bookmarklet }) {
+export function renderIndexPage({ template, config, bookmarklet, build }) {
   return render(template, {
     basePath: config.basePath,
     releaseVersion: config.releaseVersion,
-    bookmarkletVersion: config.bookmarkletVersion,
+    bookmarkletStamp: bookmarkletStamp(build),
     bookmarkletHref: escapeAttribute(bookmarklet),
     chromeInstall: createChromeInstallMarkup(config.chromeWebStoreUrl),
   });
 }
 
 /** Renders the privacy page. */
-export function renderPrivacyPage({ template, config }) {
+export function renderPrivacyPage({ template, config, build }) {
   return render(template, {
     basePath: config.basePath,
     releaseVersion: config.releaseVersion,
-    bookmarkletVersion: config.bookmarkletVersion,
+    bookmarkletStamp: bookmarkletStamp(build),
   });
 }
 
 /** Bundles the page-side runtime exactly as the shipped bookmarklet carries it. */
-export async function buildBookmarkletBundle({ root: projectRoot = root } = {}) {
+export async function buildBookmarkletBundle({ root: projectRoot = root, buildStamp = bookmarkletBuildStamp() } = {}) {
   const result = await build({
     absWorkingDir: projectRoot,
     entryPoints: ['src/bookmarklet/main.js'],
@@ -129,8 +153,17 @@ export async function buildBookmarkletBundle({ root: projectRoot = root } = {}) 
     legalComments: 'none',
     loader: { '.css': 'text' },
     write: false,
+    // A saved bookmarklet has no cache to bust: the build date is what lets a
+    // user tell an old bookmark from a current one.
+    define: { __BOOKMARKLET_BUILD__: JSON.stringify(buildStamp) },
   });
   return result.outputFiles[0].text;
+}
+
+/** The date this bundle was built, stamped into the bookmarklet itself. */
+export function bookmarkletBuildStamp(now = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 async function walk(dir, base = dir, found = []) {
@@ -188,10 +221,13 @@ export async function assertSafeArtifact(output) {
 export async function buildSite({ root: projectRoot = root, configPath, output } = {}) {
   const siteRoot = join(projectRoot, 'site');
   const config = readSiteConfig(await readFile(configPath ?? join(siteRoot, 'config.json'), 'utf8'));
-  const bundleSource = await buildBookmarkletBundle({ root: projectRoot });
+  await assertSingleReleaseVersion({ projectRoot, config });
+  // One date for both: the page shows exactly what the bundle it hands out carries.
+  const build = bookmarkletBuildStamp();
+  const bundleSource = await buildBookmarkletBundle({ root: projectRoot, buildStamp: build });
   const bookmarklet = createSelfContainedBookmarklet(bundleSource);
-  const indexHtml = renderIndexPage({ template: await readFile(join(siteRoot, 'index.html'), 'utf8'), config, bookmarklet });
-  const privacyHtml = renderPrivacyPage({ template: await readFile(join(siteRoot, 'privacy.html'), 'utf8'), config });
+  const indexHtml = renderIndexPage({ template: await readFile(join(siteRoot, 'index.html'), 'utf8'), config, bookmarklet, build });
+  const privacyHtml = renderPrivacyPage({ template: await readFile(join(siteRoot, 'privacy.html'), 'utf8'), config, build });
   const outputDir = output ?? join(projectRoot, 'dist', 'site');
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
