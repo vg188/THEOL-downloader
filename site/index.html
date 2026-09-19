@@ -56,9 +56,9 @@
 
       <article class="card" aria-labelledby="chrome-title">
         <h3 id="chrome-title">Chrome 插件完整版</h3>
-        <p>支持后台队列、下载记录，关闭面板后继续下载。安装需要经过 Chrome 商店的权限确认。</p>
+        <p>支持后台队列、下载记录，关闭面板后继续下载。</p>
         <p class="actions">{{chromeInstall}}</p>
-        <p class="hint">Chrome 已禁止普通网页静默安装扩展。按钮只会打开 Chrome 应用商店的详情页，由你确认权限后安装；本项目不分发自托管的 CRX 文件。开发者如需本地加载，请见源码仓库 README 中的“加载已解压的扩展程序”。</p>
+        {{chromeInstallHint}}
       </article>
     </div>
   </section>
@@ -72,7 +72,7 @@
           <tr><th scope="col">能力</th><th scope="col">书签轻量版</th><th scope="col">Chrome 插件完整版</th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row">安装方式</th><td>把链接拖到书签栏，无需扩展权限</td><td>经 Chrome 应用商店确认权限后安装</td></tr>
+          <tr><th scope="row">安装方式</th><td>把链接拖到书签栏，无需扩展权限</td><td>{{chromeInstallSummary}}</td></tr>
           <tr><th scope="row">扫描与筛选</th><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td></tr>
           <tr><th scope="row">打包 ZIP</th><td>在页面内存中打包，500 MB 以内</td><td>下载后打包，不受书签内存限制</td></tr>
           <tr><th scope="row">后台队列</th><td>没有后台，任务在页面里运行</td><td>有队列，可同时排队多个任务</td></tr>
@@ -135,7 +135,7 @@
       <li><strong>不收集。</strong>没有统计、没有分析、没有广告、没有错误上报，也不会把任何数据写入你的账号。</li>
       <li><strong>不读取密码。</strong>工具不读取、不填充、不保存账号或密码，也不导出 Cookie。</li>
       <li><strong>只处理当前目录。</strong>只读取你当前打开的那个课件目录里列出的 PDF / PPT / PPTX 文件，不浏览其他课程或页面。</li>
-      <li><strong>源码公开。</strong>全部代码都在 <a href="https://github.com/vg188/THEOL-downloader">github.com/vg188/THEOL-downloader</a>，可自行审计或本地构建。</li>
+      <li><strong>源码公开。</strong>全部代码都在 <a href="{{repoUrl}}">github.com/vg188/THEOL-downloader</a>，可自行审计或本地构建。</li>
     </ul>
     <p class="hint">完整说明见 <a href="{{basePath}}privacy.html">隐私政策</a>。</p>
   </section>
@@ -173,7 +173,7 @@
     </details>
     <details>
       <summary>想用完整版插件，但现在商店还在审核</summary>
-      <p>审核期间可以从源码仓库下载代码，用 Chrome 的“加载已解压的扩展程序”在开发者模式下本地加载。商店通过后，本页的按钮会变成“添加至 Chrome”。</p>
+      <p>审核期间插件版由本仓库的 Releases 直接分发：点上面的「下载 ZIP（手动安装）」，解压后在 <code>chrome://extensions</code> 开启「开发者模式」，用「加载已解压的扩展程序」选中解压目录。商店通过后本页按钮会变成「添加至 Chrome」，届时建议改用商店版，因为它会自动更新；手动加载的扩展需要你自己重新下载并点「重新加载」。</p>
     </details>
   </section>
 </main>
@@ -186,8 +186,8 @@
       <p>更新时间以仓库提交记录为准。</p>
     </div>
     <div>
-      <p><a href="https://github.com/vg188/THEOL-downloader">源码仓库</a></p>
-      <p><a href="https://github.com/vg188/THEOL-downloader/issues">问题反馈</a></p>
+      <p><a href="{{repoUrl}}">源码仓库</a></p>
+      <p><a href="{{repoUrl}}/issues">问题反馈</a></p>
       <p><a href="{{basePath}}privacy.html">隐私政策</a></p>
     </div>
   </div>

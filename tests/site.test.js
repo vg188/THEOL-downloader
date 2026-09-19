@@ -116,25 +116,53 @@ test('模板里的任意 payload 都能完整落到 anchor 上（转义与 $ 序
   assert.equal(doc.querySelector('#bookmarklet-install').getAttribute('href'), awkward);
 });
 
-test('商店链接为空时完整版卡片禁用并显示审核中', () => {
+test('商店未通过审核时，插件版卡片直接给出本仓库的包与手动加载步骤', async () => {
   assert.equal(config.chromeWebStoreUrl, null);
   const control = indexDoc.querySelector('#chrome-install');
-  assert.notEqual(control.tagName, 'A');
-  assert.equal(control.getAttribute('aria-disabled'), 'true');
-  assert.match(control.textContent, /审核中/);
-  assert.equal(control.getAttribute('href'), null);
+  assert.equal(control.tagName, 'A', 'a visitor can actually get the extension');
+  assert.notEqual(control.getAttribute('aria-disabled'), 'true');
+  assert.match(control.textContent, /下载 ZIP/);
+  assert.equal(
+    control.getAttribute('href'),
+    `${config.repoUrl}/releases/download/v${config.releaseVersion}/buct-course-downloader.zip`,
+  );
+  const card = control.closest('.card');
+  for (const step of ['开发者模式', '加载已解压的扩展程序', 'manifest.json']) {
+    assert.ok(card.textContent.includes(step), `卡片缺少手动安装步骤：${step}`);
+  }
+  assert.match(card.textContent, /不会自动更新/, 'reinstalling is stated, not hidden');
+  assert.equal(indexDoc.body.textContent.includes('Chrome 商店审核中'), false, 'no dead control is advertised');
+  // The package name in the link is the one the packager writes.
+  const packager = await readFile(join(projectRoot, 'scripts', 'package.py'), 'utf8');
+  assert.ok(packager.includes('buct-course-downloader.zip'), 'packager renamed without the site');
+});
+
+test('对比表与卡片说的是同一种安装方式', () => {
+  const row = indexDoc.querySelector('#compare table tbody tr').textContent;
+  assert.match(row, /下载 ZIP/);
+  assert.equal(row.includes('Chrome 应用商店'), false, 'the table cannot promise a store that is not live');
+});
+
+test('页面里的仓库链接与下载地址同源一个仓库', () => {
+  const hrefs = [...indexDoc.querySelectorAll('a[href^="https://github.com"]'), ...privacyDoc.querySelectorAll('a[href^="https://github.com"]')]
+    .map(node => node.getAttribute('href'));
+  assert.ok(hrefs.length >= 6, `页面上的仓库链接太少：${hrefs.length}`);
+  for (const href of hrefs) {
+    assert.ok(href.startsWith(`${config.repoUrl}/`) || href === config.repoUrl, `${href} 指向了别的仓库`);
+  }
 });
 
 test('配置了合法商店链接时完整版卡片变为“添加至 Chrome”', () => {
   const storeUrl = 'https://chromewebstore.google.com/detail/theol-downloader/abcdefghijklmnopabcdefghijklmnop';
-  const template = '<a id="bookmarklet-install" href="{{bookmarkletHref}}">x</a><p class="actions">{{chromeInstall}}</p>';
-  const html = renderIndexPage({ template, config: { ...config, chromeWebStoreUrl: storeUrl }, bookmarklet: 'javascript:void 0' });
-  const control = new JSDOM(html).window.document.querySelector('#chrome-install');
-  assert.equal(control.tagName, 'A');
+  const template = '<a id="bookmarklet-install" href="{{bookmarkletHref}}">x</a><p class="actions">{{chromeInstall}}</p>{{chromeInstallHint}}<table><tbody><tr><th scope="row">安装方式</th><td>{{chromeInstallSummary}}</td></tr></tbody></table>';
+  const html = renderIndexPage({ template, config: { ...config, chromeWebStoreUrl: storeUrl }, bookmarklet: 'javascript:void 0', build: '2026-01-02' });
+  const doc = new JSDOM(html).window.document;
+  const control = doc.querySelector('#chrome-install');
   assert.equal(control.getAttribute('href'), storeUrl);
-  assert.equal(control.getAttribute('aria-disabled'), null);
   assert.match(control.textContent, /添加至 Chrome/);
   assert.equal(control.getAttribute('rel'), 'noopener noreferrer');
+  assert.match(doc.querySelector('.hint').textContent, /静默安装/);
+  assert.match(doc.querySelector('td').textContent, /Chrome 应用商店/);
 });
 
 test('非法商店链接与非法的 basePath 会被拒绝，配置不会被改写', async () => {
@@ -145,9 +173,11 @@ test('非法商店链接与非法的 basePath 会被拒绝，配置不会被改�
   assert.throws(() => readSiteConfig({ ...base, chromeWebStoreUrl: 'https://evil.example.com/detail/x/abcdefghijklmnopabcdefghijklmnop' }), /chromeWebStoreUrl/);
   assert.throws(() => readSiteConfig({ ...base, basePath: 'THEOL-downloader/' }), /basePath/);
   assert.throws(() => readSiteConfig({ ...base, releaseVersion: 'v1' }), /releaseVersion/);
+  assert.throws(() => readSiteConfig({ ...base, repository: 'https://github.com/vg188/THEOL-downloader' }), /repository/);
+  assert.throws(() => readSiteConfig({ ...base, repository: '' }), /repository/);
   const onDisk = JSON.parse(await readFile(join(siteRoot, 'config.json'), 'utf8'));
   assert.equal(onDisk.chromeWebStoreUrl, null);
-  assert.deepEqual(Object.keys(onDisk).sort(), ['basePath', 'chromeWebStoreUrl', 'releaseVersion']);
+  assert.deepEqual(Object.keys(onDisk).sort(), ['basePath', 'chromeWebStoreUrl', 'releaseVersion', 'repository']);
 });
 
 test('站点文案说明 500 MB 规则、二次确认、保持页面打开与“已触发 ≠ 已完成”', () => {

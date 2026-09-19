@@ -1,5 +1,6 @@
 {
   "basePath": "/THEOL-downloader/",
   "chromeWebStoreUrl": null,
-  "releaseVersion": "1.0.1"
+  "releaseVersion": "1.0.1",
+  "repository": "vg188/THEOL-downloader"
 }

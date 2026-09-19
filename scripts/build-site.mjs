@@ -19,6 +19,9 @@ export const ALLOWED_HOSTS = Object.freeze(['chromewebstore.google.com', 'course
 
 /** Chrome extension IDs use the a–p alphabet; the store URL must match exactly. */
 const STORE_URL = /^https:\/\/chromewebstore\.google\.com\/detail\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-p]{32}$/;
+/** `scripts/package.py` writes exactly this file into `dist/`. */
+const RELEASE_ASSET = 'buct-course-downloader.zip';
+const REPOSITORY = /^[\w.-]+\/[\w.-]+$/;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TEXT_EXTENSIONS = new Set(['.html', '.css', '.js', '.mjs', '.json', '.txt', '.svg', '.webmanifest']);
 const BANNED_FILES = /^(?:\.env(?:\..*)?|.*\.(?:map|pem|key|p12|pfx|crx|zip|log))$/i;
@@ -53,12 +56,15 @@ export function readSiteConfig(source) {
   }
   const releaseVersion = requireString(config.releaseVersion, 'releaseVersion');
   if (!VERSION.test(releaseVersion)) fail('config.releaseVersion 必须是 x.y.z 形式');
+  const repository = requireString(config.repository, 'repository');
+  if (!REPOSITORY.test(repository)) fail('config.repository 必须是 owner/name 形式的 GitHub 仓库标识');
   const { chromeWebStoreUrl } = config;
   if (chromeWebStoreUrl !== null && !STORE_URL.test(String(chromeWebStoreUrl))) {
     fail('config.chromeWebStoreUrl 必须是 https://chromewebstore.google.com/detail/<slug>/<32 位扩展 ID> 或 null');
   }
   return Object.freeze({
-    basePath, releaseVersion,
+    basePath, releaseVersion, repository,
+    repoUrl: `https://github.com/${repository}`,
     chromeWebStoreUrl: chromeWebStoreUrl === null ? null : String(chromeWebStoreUrl),
   });
 }
@@ -96,16 +102,31 @@ function escapeAttribute(value) {
 }
 
 /**
- * The full-version install control. Chrome forbids silent installs, so the only
- * two honest states are a store link the user confirms, and a disabled control
- * while the unlisted entry is still in review.
+ * The full-version install control. Chrome forbids silent installs, so before the
+ * store review there is exactly one honest way to hand out the extension: the
+ * reproducible package this repo publishes, loaded as unpacked files. Once the
+ * store entry exists the same slot becomes a link to its detail page.
+ *
+ * Every sentence that differs between the two states comes from here, so the
+ * card, the comparison table and the button can never disagree again.
  */
-export function createChromeInstallMarkup(storeUrl) {
-  if (storeUrl === null) {
-    return '<span id="chrome-install" class="button" aria-disabled="true">Chrome 商店审核中</span>';
+export function createChromeInstallMarkup(config) {
+  const { chromeWebStoreUrl, repoUrl, releaseVersion } = config;
+  if (chromeWebStoreUrl !== null) {
+    return {
+      control: `<a id="chrome-install" class="button button-primary" rel="noopener noreferrer" href="${escapeAttribute(chromeWebStoreUrl)}">添加至 Chrome</a>`,
+      hint: '<p class="hint">Chrome 已禁止普通网页静默安装扩展：按钮只会打开 Chrome 应用商店的详情页，由你核对权限后安装。本项目不分发自托管的 CRX 文件。</p>',
+      summary: '在 Chrome 应用商店核对权限后安装',
+    };
   }
-  if (!STORE_URL.test(String(storeUrl))) fail('chrome-install 的商店链接无效');
-  return `<a id="chrome-install" class="button button-primary" rel="noopener noreferrer" href="${escapeAttribute(storeUrl)}">添加至 Chrome</a>`;
+  const tag = `v${releaseVersion}`;
+  const asset = `${repoUrl}/releases/download/${tag}/${RELEASE_ASSET}`;
+  const release = `${repoUrl}/releases/tag/${tag}`;
+  return {
+    control: `<a id="chrome-install" class="button button-primary" rel="noopener noreferrer" href="${escapeAttribute(asset)}">下载 ZIP（手动安装）</a>`,
+    hint: `<p class="hint">商店审核期间由本仓库直接分发包，共四步：把 ZIP 解压到<b>会长期保留</b>的目录（不要直接选 ZIP 文件，也不要留在下载临时目录里）；打开 <code>chrome://extensions</code> 并在右上角开启「开发者模式」；点「加载已解压的扩展程序」，选择<b>直接包含 manifest.json 的那一层目录</b>；确认列表里出现「北化课件助手」且版本号为 ${escapeAttribute(releaseVersion)}。这种手动加载的扩展<b>不会自动更新</b>，升级时重新下载解压并在扩展页点「重新加载」。包内文件清单与校验和见 <a rel="noopener noreferrer" href="${escapeAttribute(release)}">Releases 页面</a>。</p>`,
+    summary: '下载 ZIP，在开发者模式下加载解压目录',
+  };
 }
 
 function render(template, values) {
@@ -120,12 +141,16 @@ function render(template, values) {
 
 /** Renders the landing page. Pure, so both store states are testable in memory. */
 export function renderIndexPage({ template, config, bookmarklet, build }) {
+  const install = createChromeInstallMarkup(config);
   return render(template, {
     basePath: config.basePath,
     releaseVersion: config.releaseVersion,
     bookmarkletStamp: bookmarkletStamp(build),
     bookmarkletHref: escapeAttribute(bookmarklet),
-    chromeInstall: createChromeInstallMarkup(config.chromeWebStoreUrl),
+    repoUrl: escapeAttribute(config.repoUrl),
+    chromeInstall: install.control,
+    chromeInstallHint: install.hint,
+    chromeInstallSummary: install.summary,
   });
 }
 
@@ -135,6 +160,7 @@ export function renderPrivacyPage({ template, config, build }) {
     basePath: config.basePath,
     releaseVersion: config.releaseVersion,
     bookmarkletStamp: bookmarkletStamp(build),
+    repoUrl: escapeAttribute(config.repoUrl),
   });
 }
 
