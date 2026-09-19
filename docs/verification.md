@@ -19,12 +19,40 @@
 
 | 命令 | 结果 | 覆盖 |
 | --- | --- | --- |
-| npm test | 198 项通过 | 单元 URL 与页面角色策略、当前单元解析（含同源嵌套 frame 聚合）、单元索引分组与歧义、单元入口两种返回形态（本页渲染与跳转到布局页）、2 并发单元读取与跨单元去重、3 并发元数据扫描、选择失效、下载路径不变 |
+| npm test | 243 项通过（含 npm run test:site 的 19 项） | 单元 URL 与页面角色策略、当前单元解析（含同源嵌套 frame 聚合）、单元索引分组与歧义、单元入口两种返回形态（本页渲染与跳转到布局页）、2 并发单元读取与跨单元去重、3 并发元数据扫描、选择失效、下载路径不变；另含下载记录界面（排队/校验/下载/完成/失败五行状态、重试与在文件夹中显示、进度与错误文案）、流式预览页拼接与取消、文件名与路径安全、后台消息边界与扫描失败事件 |
 | npm run test:browser | 5 项通过 | 原生弹出面板布局回归（1×/1.25× 缩放、正常/短窗口高度），以及单元学习端到端流程（真实 Chrome：当前单元扫描、全部单元确认、两次单元入口读取、跨单元去重、不跳转页面、不访问辅助路由） |
-| npm run test:bookmarklet | 129 项通过 | 自包含书签的面板、扫描范围、全部单元确认、归档与逐个下载状态 |
-| npm run test:site | 15 项通过 | 站点与书签构建产物自包含：无远程运行时加载器、遥测或数据收集端点 |
+| npm run test:bookmarklet | 146 项通过 | 自包含书签的面板、扫描范围、全部单元确认、归档与逐个下载状态、脱敏诊断入口 |
+| npm run test:site | 19 项通过 | 站点与书签构建产物自包含：无远程运行时加载器、遥测或数据收集端点；书签版本号与构建日期在页面与书签里一致；四处版本号不一致时拒绝构建 |
 
 夹具为人工构造的本地 HTML/字节数据，不访问学校平台，也不请求或保存课件正文。
+
+#### 2026-09-19 补充的自动化覆盖与书签身份
+
+源码从 234 增至 243、书签从 129 增至 146。除 09-18 晚间新增的 14 项诊断测试与 2 项站点测试外：
+
+| 新增 | 项数 | 覆盖 |
+| --- | --- | --- |
+| `tests/bridge.test.js` | 3 | 单个课件识别失败与跳过如何与成功项并存、`fatal` 事件保留原因并关闭扫描（超长原因截到 240 字符）、未采满的扫描记为 `INTERRUPTED` 而不是可用的列表 |
+| `tests/app.test.js` | 2 | `DOWNLOAD_SELECTED` 的七种非法勾选（缺字段、空数组、非字符串 id、字符串而非数组）在查库前就被拒绝；“在文件夹中显示”只接受已完成且带真实 Chrome 下载编号的任务 |
+| `tests/bookmarklet/controller.test.js` | 2 | 归档字节已生成、但交付环节失败时面板显示原因而不是显示成功；取消后晚到的交付失败不覆盖“已取消”状态 |
+| `tests/bookmarklet/diagnostics.test.js` | 1 | 页面探测自身抛错时，诊断仍回答“在不在平台上”，把“探测坏了”与“页面不支持”分开 |
+| `tests/site.test.js` | 2 | 安装卡片与两页页脚显示的 `v版本 (构建日期)` 与书签自带的那一行逐字一致；`package.json`、`public/manifest.json`、`site/config.json`、`src/bookmarklet/version.js` 四处版本号不一致时拒绝构建 |
+
+对应实现：`src/bookmarklet/version.js` 提供书签自身的版本与构建日期（`scripts/build-site.mjs` 用 esbuild `define` 注入日期），`scripts/build-site.mjs` 的 `assertSingleReleaseVersion` 交叉校验四处版本号，`site/config.json` 手写的 `bookmarkletVersion` 字段删除，显示值改由代码推导——此前官网页脚只写“书签 v1”，用户无法判断自己拖的是不是最新的一份。
+
+#### 2026-09-18 补充的自动化覆盖（上一轮）
+
+在原有 198 项源码测试之外新增 36 项（合计 234 项），补齐此前完全未覆盖的路径：
+
+| 新增文件 | 项数 | 覆盖 |
+| --- | --- | --- |
+| `tests/popup-jobs.test.js` | 14 | 下载记录界面的五种状态、重试与“在文件夹中显示”入口、进度条与字节文案、失败原因展示、全选与忙碌行、扫描按钮提交、标签键盘导航、请求失败提示 |
+| `tests/network-edge.test.js` | 15 | 流式预览页多分片拼接、`arrayBuffer()` 回退、超长正文、非 HTML 与不支持编码、取消与超时、下载前校验的各种失败原因 |
+| `tests/filename-hardening.test.js` | 7 | 21 组对抗性课程名与文件名：路径穿越、保留设备名、控制字符、双向覆写、emoji 截断、超长名、大小写扩展名 |
+
+同时修复一处健壮性缺陷：`src/platform/network.js` 的 `readHtmlResponse` 在读取中途被取消时，会静默返回被截断的 HTML，随后被当作完整页面解析（半截 GBK 页面会解出替换字符）。现在取消一定会抛出 `CANCELLED`，不再返回半截正文。此前所有调用方都处在 `withDeadline` 的竞态内，超时或取消会先落地，因此该缺陷未影响已记录的实测结果；修复后行为更明确。
+
+`readBodySample`（下载前取样）在取消时仍返回空样本——这是既有测试锁定的行为，空样本必然通不过文件头校验，属于安全方向，未改动。
 
 ### (b) 真实页面只读元数据探针
 
@@ -100,8 +128,10 @@
 ## 发布包
 
 包名：`dist/buct-course-downloader.zip`
-大小：27172 字节
-SHA-256：`43a605f6a82425bfe0187d1e9d94f2e40c57ebe75885d149aa2a44b6abef63b0`
+大小：33881 字节
+SHA-256：`aeee511f0852d6ad8afa8eb35de0c8bc9bf57a841160e26cb85f877ec4b88f45`
+
+打包使用固定时间戳（`scripts/package.py` 的 `SOURCE_DATE`），同一份源码在任何机器上重复打包都会得到完全相同的字节与哈希，因此可以据此核对实际安装的包未被改动。上面这组值是 2026-09-19 按当前源码重新构建后连测两次的结果；上一轮记录的 33543 字节对应此前的构建产物，此后扩展运行时（含 `src/platform/network.js` 的取消修复）已变化，指纹随之更新。**安装前请把解压目录里 `manifest.json` 的版本与这组指纹一起核对。**
 
 ZIP 根目录只包含：
 
@@ -119,6 +149,16 @@ icons/128.png
 ```
 
 包内没有源码、开发依赖、测试、构建报告、浏览器配置、日志、账号信息、认证数据或下载的课件。清单只有 scripting、downloads、storage 权限，站点权限仅为 https://course.buct.edu.cn/*。
+
+## 官网与书签上线（2026-09-19）
+
+`https://vg188.github.io/THEOL-downloader/` 现在部署的是**官网本身**（`dist/site`：首页 + 隐私页 + 内嵌自包含书签），不再是 09-12 的可行性探针页。
+
+- 部署路径：`.github/workflows/deploy-site.yml`，在 `codex/bookmarklet-probe` 推送或手动触发时依次跑 `npm ci` → `npm test`（243 项，含站点构建断言）→ `npm run test:bookmarklet`（146 项）→ `npm run build:site`，通过后把 `dist/site` 作为 Pages artifact 发布。任一测试或产物安全检查失败都不会部署。
+- 只发布 `index.html`、`privacy.html`、`site.css`、`site.js` 四个文件：不含扩展 ZIP、探针页、浏览器配置、日志或课件。Pages 上没有任何后端、表单或分析脚本，访问者点书签后的一切行为都发生在其本机与学校平台之间。
+- 书签代码整体内嵌在页面那个可拖拽链接的 `href` 里，**没有远程运行时**：因此上线后即使本页面再次更新，已保存的书签也不会失效或被悄悄替换；判断手上的书签新旧看 `diagnose().stamp`，与安装卡片显示的 `v版本 (构建日期)` 对照。
+- 此前的探针工作流（`.github/workflows/probe-pages.yml`）已移除：GitHub Pages 每个仓库只有一个 artifact 发布通道，保留它会让两个工作流互相覆盖线上内容；`probe/` 源码与 `npm run build:probe` 仍在仓库里，其 09-13 结论见 `docs/unit-study-feasibility.md`。
+- 仓库为**公开仓库**，线上页面对任何能访问 GitHub Pages 的人可见；页面上不含课程名、账号、真实课件内容，夹具截图均为模拟数据。
 
 ## 学校平台实测
 
