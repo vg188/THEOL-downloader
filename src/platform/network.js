@@ -48,6 +48,10 @@ export async function readHtmlResponse(response, {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        // A cancelled read ends with `done`, not with an error. Never return a
+        // truncated body: a half-read GBK page decodes into replacement
+        // characters and would be parsed as a valid, wrong document.
+        if (signal?.aborted) throw new AppError('CANCELLED', '已取消读取该页面');
         chunks.push(value);
         size += value.byteLength;
         if (size > maxBytes) throw new AppError('BAD_FILE', tooLargeMessage);
@@ -56,6 +60,9 @@ export async function readHtmlResponse(response, {
       if (onAbort) signal.removeEventListener('abort', onAbort);
       stopReading();
     }
+    // The cancellation may land before the first chunk arrives, so `done`
+    // alone is not proof of a complete body.
+    if (signal?.aborted) throw new AppError('CANCELLED', '已取消读取该页面');
     bytes = chunks.length === 1 ? chunks[0] : chunks.length ? concatBytes(chunks, size) : new Uint8Array(0);
   } else {
     // Headers-only or null-body objects in tests: fall back to arrayBuffer().
