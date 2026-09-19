@@ -2,13 +2,13 @@
 
 在北京化工大学 THEOL 教学平台的**课程资源**和**单元学习**页面中，扫描、搜索、勾选 PDF / PPT / PPTX，再交给 Chrome 下载原文件。课程资源只扫描当前目录；单元学习可选择当前单元，或确认后汇总当前课程的全部单元。非学校官方扩展，不转换课件，不上传数据。
 
-> 已通过 243 项源码自动化测试（含 19 项站点构建测试）、5 项原生 Chrome 浏览器测试（含单元学习端到端流程）和 146 项自包含书签测试。课程资源的一份真实 PPT 下载已完成验证；真实 PDF/PPTX 下载尚未逐项实测；PPT 落盘容器存在字节差异，文稿和图片流校验一致。单元学习模式目前只有合成夹具证据和真实页面的**只读元数据探针**结果（当前单元与全部单元均已放行），**真实单文件下载验收尚未执行**。详细范围见 [验证记录](docs/verification.md)。
+> 已通过 245 项源码自动化测试（含 21 项站点构建测试）、5 项原生 Chrome 浏览器测试（含单元学习端到端流程）和 146 项自包含书签测试。课程资源的一份真实 PPT 下载已完成验证；真实 PDF/PPTX 下载尚未逐项实测；PPT 落盘容器存在字节差异，文稿和图片流校验一致。单元学习模式目前只有合成夹具证据和真实页面的**只读元数据探针**结果（当前单元与全部单元均已放行），**真实单文件下载验收尚未执行**。详细范围见 [验证记录](docs/verification.md)。
 
 ## 安装
 
 需要桌面版 Chrome 120 或更新版本，以及能正常访问课件的学校平台账号。**只安装和使用扩展不需要 Node.js 或 Python。**
 
-1. 下载并解压 [安装包](dist/buct-course-downloader.zip)，保留解压目录，不要直接选择 ZIP 文件。
+1. 从 [Releases](https://github.com/vg188/THEOL-downloader/releases/tag/v1.0.1) 下载并解压 [安装包](https://github.com/vg188/THEOL-downloader/releases/download/v1.0.1/buct-course-downloader.zip)（或直接在[官网](https://vg188.github.io/THEOL-downloader/)点「下载 ZIP（手动安装）」），保留解压目录，不要直接选择 ZIP 文件。本地构建后也可以用 `dist/buct-course-downloader.zip`。
 2. 在 Chrome 地址栏输入 `chrome://extensions`，打开右上角的“开发者模式”。
 3. 点击“加载已解压的扩展程序”，选择**直接包含 manifest.json 的文件夹**。
    - 在本项目中，直接选择 `E:\codex\File-scri\dist\extension`。
