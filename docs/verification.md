@@ -160,6 +160,8 @@ icons/128.png
 - 此前的探针工作流（`.github/workflows/probe-pages.yml`）已移除：GitHub Pages 每个仓库只有一个 artifact 发布通道，保留它会让两个工作流互相覆盖线上内容；`probe/` 源码与 `npm run build:probe` 仍在仓库里，其 09-13 结论见 `docs/unit-study-feasibility.md`。
 - 仓库为**公开仓库**，线上页面对任何能访问 GitHub Pages 的人可见；页面上不含课程名、账号、真实课件内容，夹具截图均为模拟数据。
 
+2026-09-19 首次部署（run `35429061925`，结论 success）的实测记录：CI 在 Ubuntu / Node 22 上 `npm test` 243 项、`npm run test:bookmarklet` 146 项全通过——这也是全套自动化首次在 Linux 上跑通（此前只有 Windows / Node 24 的证据）。线上核对：首页 200、标题为官网而非探针页、安装卡片显示 `v1.0.1 (2026-09-19)`、可拖拽链接的 `javascript:` 载荷 66998 字符且内含同一日期、无远程加载器；`privacy.html`、`site.css`、`site.js` 均 200；旧的 `probe/probe.js` 返回 404（探针页不再上线）。**这只证明发布链路与产物一致，不证明真实课件下载。**
+
 ## 学校平台实测
 
 用户在独立测试窗口手动登录。保留原先的浏览器窗口，没有读取、导出或移植登录凭据。重新加载最新扩展并刷新当前列表后，通过 **真实工具栏弹出面板** 操作，而非直接替代后台业务接口。
