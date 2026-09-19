@@ -10,7 +10,7 @@ function harness(){
   const queue={refresh:async()=>({jobs:[]}),getState:async()=>({jobs:[]}),enqueue:async files=>{calls.push(files);return {jobs:[]};},retry:async()=>({jobs:[]})};
   const bridge={assertCurrent:async()=>scan,inspect:async()=>({context:scan.context}),start:async(tabId,mode)=>{calls.push({tabId,mode});return scan;},receive:async()=>{calls.push('progress');}};
   const route=createRouter({chrome,queue,bridge,readScan:async()=>scan,writeScan:async()=>{}});
-  return {route,calls,sender:{id:'test',url:'chrome-extension://test/popup.html'}};
+  return {route,calls,queue,sender:{id:'test',url:'chrome-extension://test/popup.html'}};
 }
 test('privileged requests reject webpage/content senders',async()=>{
   const h=harness();
@@ -23,6 +23,33 @@ test('queue receives only validated stored selection, never message-supplied URL
   assert.equal(h.calls[0][0].downloadUrl,file().downloadUrl);
   await assert.rejects(h.route({type:'DOWNLOAD_SELECTED',tabId:7,scanId:'one',ids:['unknown'],requestId:'r2'},h.sender));
 });
+
+// The panel can only send a non-empty list of strings, so anything else is a
+// malformed message: it must be refused before the scan is even looked up.
+test('a download request with a malformed selection never reaches the queue',async()=>{
+  const h=harness();
+  for(const ids of [undefined,null,[],['known',7],['known',null],'12:78:1',[{}]]){
+    await assert.rejects(h.route({type:'DOWNLOAD_SELECTED',tabId:7,scanId:'one',ids},h.sender),
+      e=>e.code==='INVALID_MESSAGE',`${JSON.stringify(ids)} is refused`);
+  }
+  assert.equal(h.calls.length,0,'no lookup, no enqueue');
+});
+
+test('“在文件夹中显示”只接受已完成且有真实下载编号的任务',async()=>{
+  const h=harness();
+  h.queue.getState=async()=>({jobs:[
+    {id:'done',status:'complete',downloadId:42},
+    {id:'no-id',status:'complete'},
+    {id:'running',status:'downloading',downloadId:43},
+  ]});
+  assert.equal(await h.route({type:'SHOW_DOWNLOAD',id:'done'},h.sender),null);
+  assert.equal(h.calls[h.calls.length-1],42,'Chrome receives the stored download id');
+  for(const id of ['no-id','running','missing']){
+    await assert.rejects(h.route({type:'SHOW_DOWNLOAD',id},h.sender),e=>e.code==='INVALID_MESSAGE');
+  }
+  assert.equal(h.calls[h.calls.length-1],42,'a refused request shows nothing');
+});
+
 test('START_SCAN carries only the validated range and never starts an unknown one',async()=>{
   const h=harness();
   await h.route({type:'START_SCAN',tabId:7},h.sender);

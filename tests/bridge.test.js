@@ -258,6 +258,49 @@ test('all mode trusts only discovered IDs from the active unit frame', async () 
   await h.bridge.receive(event(scan, { kind: 'complete' }), h.sender);
   assert.equal(h.getState().phase, 'ready');
 });
+// The three outcomes one resource can report are stored side by side: a found
+// file, a resource that could not be identified, and one that was skipped.
+test('a failed and a skipped resource settle alongside the found files', async () => {
+  const h = unitHarness(); const scan = await h.bridge.start(7, 'all');
+  await h.bridge.receive(event(scan, { kind: 'discovered', resources: [resource(56), resource(57), resource(58)] }), h.sender);
+  await h.bridge.receive(event(scan, { kind: 'progress', file: file(56) }), h.sender);
+  await h.bridge.receive(event(scan, { kind: 'progress', failure: { id: '12:78:57', title: '第二章', code: 'NO_DOWNLOAD', message: '没有可用的下载入口' } }), h.sender);
+  await h.bridge.receive(event(scan, { kind: 'progress', skipped: { id: '12:78:58' } }), h.sender);
+  const state = h.getState();
+  assert.deepEqual(state.files.map(item => item.id), ['12:78:56']);
+  assert.deepEqual(state.failures, [{ id: '12:78:57', title: '第二章', code: 'NO_DOWNLOAD', message: '没有可用的下载入口' }]);
+  assert.equal(state.skipped, 1);
+  assert.equal(state.processed, 3);
+  assert.equal(state.message, '正在识别 3 / 3');
+  await h.bridge.receive(event(scan, { kind: 'complete' }), h.sender);
+  assert.equal(h.getState().phase, 'ready');
+});
+
+test('a fatal scan event keeps its reason and closes the scan', async () => {
+  const h = unitHarness(); const scan = await h.bridge.start(7, 'all');
+  await h.bridge.receive(event(scan, { kind: 'discovered', resources: [resource(56)] }), h.sender);
+  await assert.rejects(h.bridge.receive(event(scan, { kind: 'progress' }), h.sender), e => e.code === 'INVALID_MESSAGE');
+  await assert.rejects(h.bridge.receive(event(scan, { kind: 'everything-is-fine' }), h.sender), e => e.code === 'INVALID_MESSAGE');
+  assert.equal(h.getState().total, 1, 'a rejected event changes nothing');
+  await h.bridge.receive(event(scan, { kind: 'fatal', error: { code: 'LOGIN_REQUIRED', message: '登录状态已失效。'.repeat(60) } }), h.sender);
+  const state = h.getState();
+  assert.equal(state.phase, 'error');
+  assert.equal(state.errorCode, 'LOGIN_REQUIRED');
+  assert.equal(state.message.length, 240, 'a page-sized reason is stored, not a whole document');
+  assert.equal(await h.bridge.receive(event(scan, { kind: 'complete' }), h.sender), null, 'a fatal scan accepts no further events');
+});
+
+// A scan that ends before every resource settled must never look like a list.
+test('a scan that settles short of its total is reported as interrupted', async () => {
+  const h = unitHarness(); const scan = await h.bridge.start(7, 'all');
+  await h.bridge.receive(event(scan, { kind: 'discovered', resources: [resource(56), resource(57)] }), h.sender);
+  await h.bridge.receive(event(scan, { kind: 'progress', file: file(56) }), h.sender);
+  await h.bridge.receive(event(scan, { kind: 'complete' }), h.sender);
+  assert.equal(h.getState().phase, 'error');
+  assert.equal(h.getState().errorCode, 'INTERRUPTED');
+  assert.match(h.getState().message, /部分扫描结果缺失/);
+});
+
 test('unit progress stays a display counter and unit failures stay their own group', async () => {
   const h = unitHarness(); const scan = await h.bridge.start(7, 'all');
   await h.bridge.receive(event(scan, { kind: 'unit-progress', processed: 1, total: 2, discovered: 1 }), h.sender);
