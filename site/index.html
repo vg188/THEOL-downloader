@@ -27,10 +27,10 @@
   <section class="hero" aria-labelledby="hero-title">
     <p class="eyebrow">书签轻量版 · Chrome 插件完整版</p>
     <h1 id="hero-title">把 THEOL 课件，一次性打包带走</h1>
-    <p class="lede">在课程平台“单元学习”的课件目录里点一下书签，工具会扫描当前目录、按格式筛选，并在你确认后把 PDF / PPT / PPTX 打包成一个 ZIP 下载。整个过程在你自己的浏览器中完成。</p>
+    <p class="lede">在课程平台的“课程资源”目录或“单元学习”页面点一下书签，工具会扫描当前列表、按格式筛选，并在你确认后把 PDF / PPT / PPTX 打包成一个 ZIP 下载。整个过程在你自己的浏览器中完成。</p>
     <p class="disclaimer"><strong>非官方说明：</strong>本项目是学生自制的独立工具，<strong>不是北京化工大学官方产品</strong>，与学校及课程平台运营方没有隶属或授权关系。请遵守学校的课程资料使用规定，仅下载你有权访问的内容。</p>
     <ul class="facts">
-      <li>只处理当前已登录的课件目录</li>
+      <li>只处理当前已登录的课件目录或单元</li>
       <li>不上传课件、文件名或账号信息</li>
       <li>超过 500 MB 时改用逐个下载</li>
     </ul>
@@ -73,7 +73,7 @@
         </thead>
         <tbody>
           <tr><th scope="row">安装方式</th><td>把链接拖到书签栏，无需扩展权限</td><td>{{chromeInstallSummary}}</td></tr>
-          <tr><th scope="row">扫描与筛选</th><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td><td>当前课件目录，支持 PDF / PPT / PPTX 筛选</td></tr>
+          <tr><th scope="row">扫描与筛选</th><td>课程资源当前目录，或单元学习的当前 / 全部单元；支持 PDF / PPT / PPTX 筛选</td><td>课程资源当前目录，或单元学习的当前 / 全部单元；支持 PDF / PPT / PPTX 筛选</td></tr>
           <tr><th scope="row">打包 ZIP</th><td>在页面内存中打包，500 MB 以内</td><td>下载后打包，不受书签内存限制</td></tr>
           <tr><th scope="row">后台队列</th><td>没有后台，任务在页面里运行</td><td>有队列，可同时排队多个任务</td></tr>
           <tr><th scope="row">关闭面板后继续</th><td>不能，页面必须保持打开</td><td>可以，由扩展后台继续</td></tr>
@@ -88,8 +88,8 @@
     <h2 id="steps-title">三步安装书签轻量版</h2>
     <ol class="steps">
       <li><strong>显示书签栏。</strong>按 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>（macOS 为 <kbd>⌥</kbd> + <kbd>⌘</kbd> + <kbd>B</kbd>）打开书签栏，把上面的按钮拖进书签栏。</li>
-      <li><strong>登录并进入课件目录。</strong>在浏览器里登录 course.buct.edu.cn，打开要下载的课程，进入“单元学习”中的课件页面。</li>
-      <li><strong>点击书签并确认。</strong>点击书签栏上的“THEOL 下载”，面板出现后点击“扫描当前目录”，勾选需要的文件，再在面板中确认下载。</li>
+      <li><strong>登录并进入课件页面。</strong>在浏览器里登录 course.buct.edu.cn，打开要下载的课程，进入“课程资源”里含课件的文件夹，或“单元学习”中的某个单元，等列表加载完成。</li>
+      <li><strong>点击书签并确认。</strong>点击书签栏上的“THEOL 下载”，面板出现后点扫描按钮（课程资源页是“扫描当前目录”，单元学习页是“扫描当前单元”或“扫描全部单元”），勾选需要的文件，再在面板中确认下载。</li>
     </ol>
     <p class="hint">如果拖拽不方便：点击“复制书签代码”，在书签管理器中新建书签，名称填“THEOL 下载”，网址粘贴刚复制的代码。</p>
   </section>

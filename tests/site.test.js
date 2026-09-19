@@ -194,6 +194,17 @@ test('站点文案说明 500 MB 规则、二次确认、保持页面打开与“
   assert.match(indexDoc.querySelector('#compare table').textContent, /下载记录/);
 });
 
+test('页面同时说明两个入口和三种扫描范围', () => {
+  const text = indexDoc.body.textContent;
+  // The product reads 课程资源 folders as well as 单元学习 units; a page that
+  // names only one of them teaches visitors that the other one does not work.
+  for (const phrase of ['课程资源', '单元学习', '扫描当前目录', '扫描当前单元', '扫描全部单元']) {
+    assert.ok(text.includes(phrase), `页面缺少入口/范围说明：${phrase}`);
+  }
+  assert.ok(text.includes('课程资源当前目录'), '对比表要同时点到两处入口');
+  assert.match(privacyDoc.body.textContent, /课件目录或单元/);
+});
+
 test('页面结构齐全：对比表、三步安装、500 MB 规则、隐私、FAQ、页脚', () => {
   assert.equal(indexDoc.querySelectorAll('#compare table tbody tr').length, 7);
   assert.equal(indexDoc.querySelectorAll('#steps ol li').length, 3);
