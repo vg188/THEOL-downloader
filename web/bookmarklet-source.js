@@ -1,18 +1,18 @@
-/* 北化课件下载 · 标签版 v2.2 — 自包含书签
- * 弹窗；两个总标签「课程资源 / 单元学习」；
- * 进入课程页后独立拉取两侧资源（不依赖当前 frame 是否已打开资源列表）。
+/* 北化课件下载 — 自包含书签
+ * 弹窗；课程资源 / 单元学习；优先 ZIP；可配置目录结构与打包策略。
  */
 (() => {
   'use strict';
-  const VERSION = '2.3.0-tab';
+  const VERSION = '2.4.0';
   const HOST_ID = 'buct-tab-dl-host';
+  const SETTINGS_KEY = 'buct-dl-settings-v1';
 
   if (location.protocol !== 'https:' && location.protocol !== 'http:') {
     alert('请在学校教学平台页面运行此书签');
     return;
   }
   if (!/course\.buct\.edu\.cn$/i.test(location.hostname)) {
-    alert('请在 course.buct.edu.cn 的课程页运行「北化课件下载 · 标签版」');
+    alert('请在 course.buct.edu.cn 的课程页运行「北化课件下载」');
     return;
   }
 
@@ -428,6 +428,27 @@
   }
 
   // ---------- UI ----------
+  const DEFAULT_SETTINGS = {
+    zipMode: 'auto',
+    flatten: false,
+    maxZipMb: 200,
+    maxZipFiles: 120,
+  };
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return { ...DEFAULT_SETTINGS };
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  function saveSettings(next) {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* */ }
+  }
+
   const state = {
     courseName: '课件',
     tab: 'resource', // resource | unit
@@ -444,6 +465,8 @@
     collapsed: new Set(),
     scanning: false,
     downloading: false,
+    settings: loadSettings(),
+    showSettings: false,
   };
 
   function mountUI() {
@@ -626,6 +649,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .foot .meta { font-size: 12px; color: #64748b; }
 .foot .meta strong { color: #0f172a; }
 .note { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.settings { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.settings h3 { margin: 0 0 10px; font-size: 13px; color: #334155; }
+.set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.set-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569; }
+.set-grid select, .set-grid input {
+  font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid #e2e8f0;
+  border-radius: 8px; background: #fff; color: #0f172a;
+}
+.set-note { margin: 10px 0 0; font-size: 11px; color: #94a3b8; }
+.set-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 @media (max-width: 760px) {
   .body { grid-template-columns: 1fr; }
   .side { display: none; }
@@ -633,17 +666,18 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 </style>
 <div class="scrim" id="scrim"></div>
-<div class="dialog" role="dialog" aria-label="北化课件下载标签版">
+<div class="dialog" role="dialog" aria-label="北化课件下载">
   <header class="top" id="dragBar">
     <div class="mark">⬇</div>
     <div class="titles">
-      <h1>北化课件下载 · 标签版</h1>
+      <h1>北化课件下载</h1>
       <p class="sub" id="course">正在识别课程…</p>
     </div>
     <div class="stats" id="stats"></div>
     <div class="acts">
       <button class="primary" id="btnScan" type="button">重新汇总</button>
       <button class="accent" id="btnDl" type="button" disabled>下载所选</button>
+      <button class="ghost" id="btnSettings" type="button">设置</button>
       <button class="ghost" id="btnClose" type="button">关闭</button>
     </div>
   </header>
@@ -652,6 +686,35 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     <button class="main-tab" data-tab="unit" type="button">单元学习 <span class="cnt" id="cntUnit">0</span></button>
   </nav>
   <div class="status" id="status"><span class="dot busy"></span><span id="statusText">正在汇总课程资源与全部单元…</span></div>
+  <div class="settings" id="settingsPanel" hidden>
+    <h3>下载设置</h3>
+    <div class="set-grid">
+      <label>打包方式
+        <select id="setZipMode">
+          <option value="auto">自动（优先 ZIP）</option>
+          <option value="always">始终打包 ZIP</option>
+          <option value="never">始终批量逐个</option>
+        </select>
+      </label>
+      <label>ZIP 内目录
+        <select id="setFlatten">
+          <option value="0">保留目录结构</option>
+          <option value="1">不要文件夹，文件平铺</option>
+        </select>
+      </label>
+      <label>ZIP 体积上限 (MB)
+        <input id="setZipMb" type="number" min="10" max="2000" step="10" />
+      </label>
+      <label>ZIP 文件数上限
+        <input id="setZipFiles" type="number" min="1" max="500" step="1" />
+      </label>
+    </div>
+    <p class="set-note">设置保存在本机浏览器，不会上传。</p>
+    <div class="set-actions">
+      <button class="soft" id="setReset" type="button">恢复默认</button>
+      <button class="accent" id="setSave" type="button">保存设置</button>
+    </div>
+  </div>
   <div class="toolbar">
     <div class="types" id="types">
       <button class="type active" data-g="all" type="button">全部</button>
@@ -690,11 +753,27 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       course: $('course'), stats: $('stats'), status: $('status'), statusText: $('statusText'),
       tree: $('tree'), types: $('types'), q: $('q'), mainTabs: $('mainTabs'),
       cntRes: $('cntRes'), cntUnit: $('cntUnit'),
-      btnScan: $('btnScan'), btnDl: $('btnDl'), btnClose: $('btnClose'),
+      btnScan: $('btnScan'), btnDl: $('btnDl'), btnClose: $('btnClose'), btnSettings: $('btnSettings'),
       btnExp: $('btnExp'), btnCol: $('btnCol'), btnSelVis: $('btnSelVis'), btnClr: $('btnClr'),
       selList: $('selList'), selN: $('selN'), saveName: $('saveName'), dlNote: $('dlNote'),
       dialog: shadow.querySelector('.dialog'), dragBar: $('dragBar'), scrim: $('scrim'),
+      settingsPanel: $('settingsPanel'), setZipMode: $('setZipMode'), setFlatten: $('setFlatten'),
+      setZipMb: $('setZipMb'), setZipFiles: $('setZipFiles'), setReset: $('setReset'), setSave: $('setSave'),
     };
+
+    function openSettings() {
+      const s = state.settings;
+      els.setZipMode.value = s.zipMode || 'auto';
+      els.setFlatten.value = s.flatten ? '1' : '0';
+      els.setZipMb.value = String(s.maxZipMb || 200);
+      els.setZipFiles.value = String(s.maxZipFiles || 120);
+      els.settingsPanel.hidden = false;
+      state.showSettings = true;
+    }
+    function closeSettings() {
+      els.settingsPanel.hidden = true;
+      state.showSettings = false;
+    }
 
     (function enableDrag() {
       let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
@@ -1023,8 +1102,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     /* —— ZIP（store，无压缩）——
      * 标准：优先打成一个 ZIP；文件数过多、已知体积超限，或打包中超过字节预算时退回批量。
      */
-    const ZIP_MAX_BYTES = 200 * 1024 * 1024;
-    const ZIP_MAX_FILES = 120;
+    const ZIP_MAX_BYTES = (Number(state.settings.maxZipMb) || 200) * 1024 * 1024;
 
     function crc32(buf) {
       let c = -1;
@@ -1090,33 +1168,65 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       return new Blob([...chunks, ...central, end], { type: 'application/zip' });
     }
 
-    function decideDownloadMode(items) {
-      if (items.length > ZIP_MAX_FILES) {
-        return { mode: 'batch', reason: '已选 ' + items.length + ' 个，超过 ' + ZIP_MAX_FILES + '，改用批量下载' };
+    /** ZIP 内路径：默认不重复课程名；flatten 时文件平铺并去重名 */
+    function zipEntryName(f, used) {
+      const section = f.section === 'unit' ? '单元学习' : '课程资源';
+      let name = state.settings.flatten
+        ? f.name
+        : section + '/' + relPath(f);
+      name = name.replace(/\\/g, '/');
+      if (state.settings.flatten) {
+        let base = name;
+        let n = 1;
+        while (used.has(name)) {
+          const dot = base.lastIndexOf('.');
+          name = dot > 0
+            ? base.slice(0, dot) + ' (' + n + ')' + base.slice(dot)
+            : base + ' (' + n + ')';
+          n += 1;
+        }
       }
-      const known = items.reduce((s, f) => s + (Number(f.sizeBytes) || 0), 0);
+      used.add(name);
+      return name;
+    }
+
+    function decideDownloadMode(items) {
+      const s = state.settings;
+      const maxBytes = (Number(s.maxZipMb) || 200) * 1024 * 1024;
+      const maxFiles = Number(s.maxZipFiles) || 120;
+      if (s.zipMode === 'never') {
+        return { mode: 'batch', reason: '已设为批量逐个下载' };
+      }
+      if (s.zipMode === 'always') {
+        return { mode: 'zip', reason: s.flatten ? '打包 ZIP（文件平铺）' : '打包 ZIP（保留目录）' };
+      }
+      if (items.length > maxFiles) {
+        return { mode: 'batch', reason: '已选 ' + items.length + ' 个，超过 ' + maxFiles + '，改用批量下载' };
+      }
+      const known = items.reduce((sum, f) => sum + (Number(f.sizeBytes) || 0), 0);
       const unknown = items.filter((f) => !Number(f.sizeBytes)).length;
-      if (known > ZIP_MAX_BYTES) {
+      if (known > maxBytes) {
         return { mode: 'batch', reason: '已知体积过大，改用批量下载' };
       }
       if (unknown > 60) {
         return { mode: 'batch', reason: '大小未知文件过多，改用批量下载' };
       }
-      if (unknown > 0) {
-        return { mode: 'zip', reason: '打包 ZIP（含 ' + unknown + ' 个大小未知文件，超 ' + Math.round(ZIP_MAX_BYTES / 1048576) + ' MB 自动改批量）' };
-      }
-      return { mode: 'zip', reason: '打包 ZIP（约 ' + (known ? (known / 1048576).toFixed(1) + ' MB' : '未知大小') + '）' };
+      const layout = s.flatten ? '文件平铺' : '保留目录';
+      return {
+        mode: 'zip',
+        reason: '打包 ZIP · ' + layout + (unknown ? '（含 ' + unknown + ' 个大小未知）' : ''),
+      };
     }
 
     async function downloadAsZip(items) {
       const packed = [];
+      const used = new Set();
       let total = 0;
       let done = 0;
+      const maxBytes = (Number(state.settings.maxZipMb) || 200) * 1024 * 1024;
       for (const f of items) {
         done += 1;
         setStatus('打包中 ' + done + ' / ' + items.length + '：' + f.name, 'busy');
-        const section = f.section === 'unit' ? '单元学习' : '课程资源';
-        const name = (state.courseName || '课件') + '/' + section + '/' + relPath(f);
         let data;
         try {
           const res = await fetch(f.downloadUrl, { credentials: 'include' });
@@ -1130,16 +1240,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
           throw Object.assign(new Error(f.name + '：' + (e && e.message ? e.message : e)), { failedFile: f });
         }
         total += data.length;
-        if (total > ZIP_MAX_BYTES) {
-          throw Object.assign(new Error('打包体积超过 ' + Math.round(ZIP_MAX_BYTES / 1048576) + ' MB'), { overBudget: true });
+        if (total > maxBytes) {
+          throw Object.assign(new Error('打包体积超过 ' + Math.round(maxBytes / 1048576) + ' MB'), { overBudget: true });
         }
-        packed.push({ name: name.replace(/\\/g, '/'), data });
+        packed.push({ name: zipEntryName(f, used), data });
       }
       setStatus('正在生成 ZIP…', 'busy');
       const blob = zipStore(packed);
-      const zipName = (state.courseName || '课件') + '_' + items.length + '个文件.zip';
+      // 文件名只带一次课程名，包内不再重复
+      const zipName = (state.courseName || '课件') + '.zip';
       saveBlob(blob, zipName);
-      setStatus('已打包下载：' + zipName + '（' + items.length + ' 个文件）', 'ok');
+      setStatus('已下载压缩包：' + zipName + '（' + items.length + ' 个文件）', 'ok');
     }
 
     async function downloadAsBatch(items) {
@@ -1147,14 +1258,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       setStatus('批量下载 ' + items.length + ' 个文件…', 'busy');
       let done = 0;
       for (const f of items) {
-        const section = f.section === 'unit' ? '单元学习' : '课程资源';
-        triggerDownload(f.downloadUrl, (state.courseName || '课件') + '/' + section + '/' + relPath(f));
+        // 批量时 download 属性只取文件名；路径信息在状态里提示
+        triggerDownload(f.downloadUrl, f.name);
         done += 1;
         setStatus('已触发 ' + done + ' / ' + items.length + '：' + f.name, 'busy');
         await sleep(260);
       }
       setStatus('已触发全部 ' + items.length + ' 个下载。请到浏览器下载列表核对。', 'ok');
-      els.dlNote.textContent = '批量下载 · 路径含「课程资源 / 单元学习」';
+      els.dlNote.textContent = state.settings.flatten
+        ? '批量下载 · 文件名'
+        : '批量下载 · 保存名以文件名为准，目录结构见汇总列表';
     }
 
     async function doDownload() {
@@ -1212,6 +1325,27 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     els.btnDl.addEventListener('click', () => doDownload());
     els.btnClose.addEventListener('click', () => host.remove());
     els.scrim.addEventListener('click', () => host.remove());
+    els.btnSettings.addEventListener('click', () => {
+      if (state.showSettings) closeSettings();
+      else openSettings();
+    });
+    els.setSave.addEventListener('click', () => {
+      state.settings = {
+        zipMode: els.setZipMode.value || 'auto',
+        flatten: els.setFlatten.value === '1',
+        maxZipMb: Math.max(10, Math.min(2000, Number(els.setZipMb.value) || 200)),
+        maxZipFiles: Math.max(1, Math.min(500, Number(els.setZipFiles.value) || 120)),
+      };
+      saveSettings(state.settings);
+      closeSettings();
+      setStatus('设置已保存', 'ok');
+    });
+    els.setReset.addEventListener('click', () => {
+      state.settings = { ...DEFAULT_SETTINGS };
+      saveSettings(state.settings);
+      openSettings();
+      setStatus('已恢复默认设置', 'ok');
+    });
     els.btnExp.addEventListener('click', () => { state.collapsed.clear(); renderTree(); });
     els.btnCol.addEventListener('click', () => {
       const walk = (n) => {

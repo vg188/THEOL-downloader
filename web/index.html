@@ -1,16 +1,13 @@
-<!-- AI生成 -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>北化课件下载 · 标签版</title>
-<meta name="description" content="THEOL 课件批量下载标签版：弹窗面板，一次汇总课程资源与全部单元，树状勾选下载。书签安装，非官方。">
+<title>北化课件下载</title>
+<meta name="description" content="北京化工大学 THEOL 教学平台课件批量下载工具。一次汇总课程资源与单元学习，树状勾选，优先打包 ZIP。书签安装，本地运行。">
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
-<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
-
 <a class="skip-link" href="#main">跳到主要内容</a>
 
 <header class="site-header">
@@ -18,14 +15,14 @@
     <span class="logo">⬇</span>
     <div>
       <strong>北化课件下载</strong>
-      <small>标签版</small>
+      <small>THEOL Courseware Downloader</small>
     </div>
   </div>
   <nav class="site-nav" aria-label="页面导航">
     <a href="#install">安装</a>
-    <a href="#features">能力</a>
-    <a href="#steps">步骤</a>
-    <a href="#faq">问题</a>
+    <a href="#features">功能</a>
+    <a href="#download">下载方式</a>
+    <a href="#faq">常见问题</a>
     <a href="privacy.html">隐私</a>
     <a class="repo" href="https://github.com/vg188/THEOL-downloader">GitHub</a>
   </nav>
@@ -34,116 +31,120 @@
 <main id="main">
   <section class="hero">
     <div class="hero-copy">
-      <p class="eyebrow">标签版 · 弹窗面板 · 一次汇总</p>
-      <h1>进一门课，<br>课件全部列出来</h1>
-      <p class="lede">在 THEOL 课程页点一下书签，弹出面板并<strong>自动汇总</strong>「课程资源目录树」和「单元学习全部单元」。上方两个总标签切换板块，树状勾选后一次下载；已选区会标明是哪个板块的文件。</p>
-      <p class="disclaimer">非学校官方工具。请仅下载你有权访问的课程资料。</p>
+      <p class="eyebrow">北京化工大学 · THEOL 教学平台</p>
+      <h1>课件批量下载，<br>一次勾选带走</h1>
+      <p class="lede">在课程页打开面板，自动汇总<strong>课程资源</strong>与<strong>单元学习全部单元</strong>。树状勾选后优先打包成一个 ZIP，也可在设置中改为批量逐个下载。</p>
+      <p class="disclaimer">非学校官方产品。请遵守学校规定，仅下载你有权访问的课程资料。</p>
       <div class="hero-actions">
-        <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏：北化课件 · 标签版</a>
+        <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏安装</a>
         <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
       </div>
       <p id="copy-status" class="status" role="status" aria-live="polite"></p>
-      <p class="stamp">书签版本 <code id="bookmarklet-stamp">…</code></p>
+      <p class="stamp">版本 <code id="bookmarklet-stamp">…</code></p>
     </div>
     <div class="hero-card" aria-hidden="true">
       <div class="fake-window">
         <div class="fake-top">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <em>北化课件下载 · 标签版</em>
+          <em>北化课件下载</em>
         </div>
-        <div class="fake-stats"><span>资源 42</span><span>单元 9</span><span>共 67</span></div>
+        <div class="fake-tabs">
+          <span class="on">课程资源</span><span>单元学习</span>
+        </div>
+        <div class="fake-stats"><span>资源 42</span><span>单元 9</span></div>
         <div class="fake-tree">
           <div class="n folder">▾ 课程资源</div>
           <div class="n file">　☑ 迈克尔逊干涉仪实验.pptx</div>
           <div class="n file">　☑ 单缝衍射.pdf</div>
-          <div class="n folder">▾ 单元学习</div>
-          <div class="n folder">　▾ 塞曼效应</div>
-          <div class="n file">　　☑ 塞曼效应记录.pdf</div>
-          <div class="n folder">　▾ 光的偏振</div>
-          <div class="n file">　　□ 光的偏振.pptx</div>
+          <div class="n folder">▾ 第二章 随机变量</div>
+          <div class="n file">　□ 2.1 随机变量.pdf</div>
         </div>
-        <div class="fake-foot"><span>已选 4</span><b>下载所选</b></div>
+        <div class="fake-foot"><span>已选 2 · 打包 ZIP</span><b>下载所选</b></div>
       </div>
     </div>
   </section>
 
   <section id="install" class="section">
-    <h2>三步装好</h2>
+    <h2>安装</h2>
     <ol class="steps">
-      <li><strong>显示书签栏</strong>：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></li>
-      <li><strong>拖按钮进去</strong>：把上方蓝色按钮拖到书签栏</li>
-      <li><strong>课程页点书签</strong>：登录 THEOL，打开某门课，点书签</li>
+      <li><strong>显示书签栏</strong>：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（macOS <kbd>⌥</kbd>+<kbd>⌘</kbd>+<kbd>B</kbd>）</li>
+      <li><strong>拖入书签</strong>：把上方按钮拖到书签栏；若拖拽无效，点「复制书签代码」后手动新建书签并粘贴网址</li>
+      <li><strong>在课程页使用</strong>：登录 course.buct.edu.cn，进入某门课的课程资源或单元学习，点击书签</li>
     </ol>
-    <p class="hint"><strong>拖到书签栏后点不开？</strong>Chrome 可能拦下 <code>javascript:</code> 书签。改用：右键按钮 →「复制链接地址」→ 书签管理器新建书签 → 网址粘贴。不要在本页点书签按钮（它只提示安装方式）。</p>
+    <p class="hint">不要在本页点击书签按钮。书签代码完整保存在本地书签中，不依赖远程脚本。</p>
   </section>
 
   <section id="features" class="section">
-    <h2>标签版能力</h2>
+    <h2>功能</h2>
     <div class="grid">
       <article class="feature">
-        <h3>弹窗面板</h3>
-        <p>居中弹窗，可拖拽、可关闭，不霸占整个页面。</p>
+        <h3>双板块汇总</h3>
+        <p>课程资源目录树与单元学习全部单元一次读取，不必来回切换页面。</p>
       </article>
       <article class="feature">
-        <h3>双板块标签</h3>
-        <p>「课程资源 / 单元学习」两个总标签分开浏览，已选文件按板块分组。</p>
-      </article>
-      <article class="feature">
-        <h3>独立汇总</h3>
-        <p>不依赖你当前停在哪一页，主动拉取课程资源树和全部单元。</p>
-      </article>
-      <article class="feature">
-        <h3>全部单元</h3>
-        <p>自动探测单元列表并逐个读取，而不是只看当前单元。</p>
+        <h3>树状勾选</h3>
+        <p>文件夹三态勾选，根目录文件也可单独选择；支持搜索与类型筛选。</p>
       </article>
       <article class="feature">
         <h3>类型筛选</h3>
-        <p>PDF / PPT / Word / Excel / 压缩包 / 其他，一键过滤。</p>
+        <p>PDF · PPT · Word · Excel · 压缩包 · 其他，按需过滤后再下载。</p>
       </article>
       <article class="feature">
-        <h3>优先 ZIP</h3>
-        <p>所选文件默认打包成一个压缩包；文件过多或体积超限时自动改批量逐个下载。</p>
+        <h3>下载设置</h3>
+        <p>可配置优先 ZIP / 始终批量、ZIP 内是否保留目录、体积与数量上限。</p>
       </article>
       <article class="feature">
         <h3>本地运行</h3>
-        <p>书签自包含，不上传课件与账号，不加载远程脚本。</p>
+        <p>使用你的登录会话读取已授权资源，不上传课件与账号信息。</p>
+      </article>
+      <article class="feature">
+        <h3>清晰路径</h3>
+        <p>ZIP 内按「课程资源 / 单元学习」分组，可选文件平铺，避免重复目录名。</p>
       </article>
     </div>
   </section>
 
-  <section id="steps" class="section">
-    <h2>使用流程</h2>
-    <ol class="steps">
-      <li>登录 <code>course.buct.edu.cn</code>，打开一门课</li>
-      <li>点书签栏「北化课件 · 标签版」</li>
-      <li>弹窗自动汇总资源树与全部单元</li>
-      <li>筛选 / 勾选 →「下载所选」→ 核对浏览器下载列表</li>
-    </ol>
+  <section id="download" class="section">
+    <h2>下载方式</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>场景</th><th>默认行为</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>常规选择（默认）</th><td>打包为<strong>一个 ZIP</strong>，包内保留「课程资源 / 单元学习」目录</td></tr>
+          <tr><th>需要平铺文件</th><td>设置 → ZIP 内目录 →「不要文件夹，文件平铺」</td></tr>
+          <tr><th>文件很多 / 体积很大</th><td>自动改为批量逐个下载（可在设置中调整上限）</td></tr>
+          <tr><th>始终单文件或始终批量</th><td>设置 → 打包方式 →「始终打包 ZIP」或「始终批量逐个」</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">压缩包文件名即课程名，例如 <code>大学物理实验(II).zip</code>；包内不再重复课程名目录。</p>
   </section>
 
   <section id="faq" class="section">
     <h2>常见问题</h2>
-    <details open>
-      <summary>为什么要进具体课程页？</summary>
-      <p>书签只在你已登录的 THEOL 页面里读取当前课程可见资源，不能跨课、不能绕过权限。</p>
+    <details>
+      <summary>书签点了没反应？</summary>
+      <p>请使用本页最新书签（复制或重新拖拽）。确认当前页是 course.buct.edu.cn 的课程页。若手动建书签，网址应以 <code>javascript:(()=></code> 开头。</p>
     </details>
     <details>
-      <summary>汇总很慢？</summary>
-      <p>「全部单元」会逐个读取单元页。单元很多时需要几秒到几十秒，进度会显示在状态栏。</p>
+      <summary>扫描结果里没有课程资源？</summary>
+      <p>进入具体课程后点书签，工具会主动请求课程资源目录树。若仍为空，确认你有该课资源权限并刷新页面后重试。</p>
     </details>
     <details>
-      <summary>Chrome 询问多个下载？</summary>
-      <p>点「允许」。若拒绝，重新勾选后再下一次。</p>
+      <summary>如何不要文件夹、直接把文件放 ZIP 根目录？</summary>
+      <p>面板 → 设置 → ZIP 内目录 → 选择「不要文件夹，文件平铺」→ 保存设置。</p>
     </details>
     <details>
-      <summary>和插件版什么关系？</summary>
-      <p>标签版书签适合马上用；插件版在开发中，会提供后台队列与下载记录。</p>
+      <summary>Chrome 询问是否允许多个下载？</summary>
+      <p>批量模式下请点「允许」。使用 ZIP 时通常只触发一次下载。</p>
     </details>
   </section>
 </main>
 
 <footer class="site-footer">
-  <p>北化课件下载 · 标签版 · 非学校官方 · <a href="https://github.com/vg188/THEOL-downloader">源码</a> · <a href="privacy.html">隐私</a></p>
+  <p>北化课件下载 · 非学校官方 · <a href="https://github.com/vg188/THEOL-downloader">源码</a> · <a href="privacy.html">隐私说明</a></p>
 </footer>
 
 <script src="site.js"></script>
