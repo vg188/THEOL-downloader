@@ -1,0 +1,11 @@
+{
+  "name": "buct-tab-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node web/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  }
+}

@@ -1,6 +1,5 @@
 name: Deploy website
 
-# 标签版官网：静态站点 + 自包含书签，无远程运行时。
 on:
   push:
     branches: [codex/bookmarklet-probe, main, master]
@@ -21,6 +20,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/package.json
+      - name: Install build deps
+        run: npm install --prefix web esbuild@0.25.12
       - name: Build site
         run: node web/build.mjs
       - uses: actions/configure-pages@v5

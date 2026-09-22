@@ -8,14 +8,30 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-// 复用 File-scri 里已有的 esbuild
-const { transform } = require('E:/codex/File-scri/node_modules/esbuild/lib/main.js');
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const webDir = path.join(root, 'web');
 const distDir = path.join(root, 'dist', 'site');
 const previewDir = root;
+
+function loadTransform() {
+  const candidates = [
+    'esbuild',
+    path.join(__dirname, 'node_modules', 'esbuild'),
+    'E:/codex/File-scri/node_modules/esbuild/lib/main.js',
+    'E:/codex/File-scri/node_modules/esbuild',
+  ];
+  for (const id of candidates) {
+    try {
+      const mod = require(id);
+      return mod.transform || (mod.default && mod.default.transform);
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error('esbuild not found; run npm install --prefix web esbuild');
+}
+const transform = loadTransform();
 
 const stamp = new Date().toISOString().slice(0, 10);
 const version = '2.2.2-tab';
