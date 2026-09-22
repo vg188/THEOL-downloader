@@ -10,7 +10,7 @@ const distDir = path.join(root, 'dist', 'site');
 const previewDir = root; // 当前工作目录预览入口
 
 const stamp = new Date().toISOString().slice(0, 10);
-const version = '2.1.0-tab';
+const version = '2.2.0-tab';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const write = (p, content) => {

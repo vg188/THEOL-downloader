@@ -1,9 +1,10 @@
-/* 北化课件下载 · 标签版 v2.1 — 自包含书签
- * 弹窗面板；进入课程页后一次汇总「课程资源目录树 + 单元学习全部单元」。
+/* 北化课件下载 · 标签版 v2.2 — 自包含书签
+ * 弹窗；两个总标签「课程资源 / 单元学习」；
+ * 进入课程页后独立拉取两侧资源（不依赖当前 frame 是否已打开资源列表）。
  */
 (() => {
   'use strict';
-  const VERSION = '2.1.0-tab';
+  const VERSION = '2.2.0-tab';
   const HOST_ID = 'buct-tab-dl-host';
 
   if (location.protocol !== 'https:' && location.protocol !== 'http:') {
@@ -117,7 +118,9 @@
     const iconExt = extFromRow(tr);
     if (!hasExt(name) && iconExt) name += '.' + iconExt;
     const ext = extOf(name) || iconExt;
-    const downloadUrl = ORIGIN + '/meol/common/script/download.jsp?fileid=' + encodeURIComponent(fileid) +
+    let origin = ORIGIN;
+    try { origin = new URL(pageUrl).origin; } catch { /* */ }
+    const downloadUrl = origin + '/meol/common/script/download.jsp?fileid=' + encodeURIComponent(fileid) +
       '&resid=' + encodeURIComponent(resid) + '&lid=' + encodeURIComponent(lid);
     return {
       id: lid + ':' + resid + ':' + fileid,
@@ -134,8 +137,8 @@
       children: [], scanError: '',
     };
   }
-  function makeFile(info, pathSegments) {
-    return { type: 'file', ...info, pathSegments: pathSegments.slice() };
+  function makeFile(info, pathSegments, section) {
+    return { type: 'file', ...info, pathSegments: pathSegments.slice(), section: section || 'resource' };
   }
 
   async function scanFolder(pageUrl, folderName, pathSegments, visited) {
@@ -144,7 +147,7 @@
     const folderNode = makeFolder(folderName, pathSegments, pageUrl);
     for (const tr of extractRows(doc)) {
       const file = parseFileRow(tr, pageUrl);
-      if (file) { folderNode.children.push(makeFile(file, pathSegments)); continue; }
+      if (file) { folderNode.children.push(makeFile(file, pathSegments, 'resource')); continue; }
       const folder = parseFolderRow(tr, pageUrl);
       if (!folder || visited.has(folder.folderId)) continue;
       visited.add(folder.folderId);
@@ -179,24 +182,61 @@
     return out;
   }
 
-  function findListDocs() {
-    const found = [];
+  /** 从任意 frame / URL / 链接里挖课程 id（lid 或 courseId） */
+  function discoverCourseId() {
+    const candidates = [];
     for (const win of walkWindows(window)) {
       try {
-        const doc = win.document;
-        if (!doc) continue;
         const href = win.location.href;
-        const table = doc.querySelector('table.valuelist');
-        const isList = /listview\.jsp|resFolderViewList\.do/i.test(href);
-        if (table || isList) {
-          found.push({
-            win, doc, url: href, title: doc.title || '', hasTable: !!table,
-            isUnitRes: /resFolderViewList\.do/i.test(href),
-          });
+        try {
+          const u = new URL(href);
+          const lid = u.searchParams.get('lid') || u.searchParams.get('courseId') || '';
+          if (lid && /^\d+$/.test(lid)) candidates.push(lid);
+        } catch { /* */ }
+        for (const a of win.document.querySelectorAll('a[href]')) {
+          const h = a.getAttribute('href') || '';
+          if (!/lid=|courseId=/.test(h)) continue;
+          try {
+            const u = new URL(h, href);
+            const lid = u.searchParams.get('lid') || u.searchParams.get('courseId') || '';
+            if (lid && /^\d+$/.test(lid)) candidates.push(lid);
+          } catch { /* */ }
         }
       } catch { /* */ }
     }
-    return found;
+    // 去重，优先出现次数最多的
+    const count = {};
+    for (const id of candidates) count[id] = (count[id] || 0) + 1;
+    const sorted = Object.entries(count).sort((a, b) => b[1] - a[1]);
+    return sorted.length ? sorted[0][0] : '';
+  }
+
+  function courseNameFromTitle(title) {
+    const m = String(title || '').match(/网络课程\s*[—–-]\s*(.+)$/);
+    if (m) return sanitizeName(m[1]).slice(0, 80);
+    return sanitizeName(String(title || '').replace(/\s*[-—–|].*$/, '').trim() || '课件').slice(0, 80);
+  }
+
+  function parseUnitIndex(doc, pageUrl) {
+    const entries = [], seen = new Set();
+    const NON_UNIT = /^(单元学习|课程资源|课程活动|基本信息|首页|课程介绍|教学大纲|教学日历|教师信息|课程作业|在线测试|教学播课|学习分析|互动交流|课程通知|课程问卷|课程笔记|课程答疑)$/i;
+    for (const anchor of doc.querySelectorAll('a[href*="course_column_preview_transfer.jsp"]')) {
+      try {
+        const u = new URL(anchor.getAttribute('href'), pageUrl);
+        const columnId = u.searchParams.get('columnId');
+        const tagbug = u.searchParams.get('tagbug');
+        if (!columnId || tagbug !== 'client' || seen.has(columnId)) continue;
+        const title = sanitizeName((anchor.textContent || '').replace(/\s+/g, ' ').trim() || '单元').slice(0, 120);
+        if (NON_UNIT.test(title) || title.length < 2) continue;
+        seen.add(columnId);
+        entries.push({
+          columnId, title,
+          entryUrl: u.origin + u.pathname + '?tagbug=client&columnId=' + encodeURIComponent(columnId),
+          order: entries.length,
+        });
+      } catch { /* */ }
+    }
+    return entries;
   }
 
   function extractPreviewLinks(doc) {
@@ -226,28 +266,6 @@
     return [...unique.values()];
   }
 
-  function parseUnitIndex(doc, pageUrl) {
-    const entries = [], seen = new Set();
-    const NON_UNIT = /^(单元学习|课程资源|课程活动|基本信息|首页|课程介绍|教学大纲|教学日历|教师信息|课程作业|在线测试|教学播课|学习分析|互动交流|课程通知|课程问卷|课程笔记|课程答疑)$/i;
-    for (const anchor of doc.querySelectorAll('a[href*="course_column_preview_transfer.jsp"]')) {
-      try {
-        const u = new URL(anchor.getAttribute('href'), pageUrl);
-        const columnId = u.searchParams.get('columnId');
-        const tagbug = u.searchParams.get('tagbug');
-        if (!columnId || tagbug !== 'client' || seen.has(columnId)) continue;
-        const title = sanitizeName((anchor.textContent || '').replace(/\s+/g, ' ').trim() || '单元').slice(0, 120);
-        if (NON_UNIT.test(title) || title.length < 2) continue;
-        seen.add(columnId);
-        entries.push({
-          columnId, title,
-          entryUrl: u.origin + u.pathname + '?tagbug=client&columnId=' + encodeURIComponent(columnId),
-          order: entries.length,
-        });
-      } catch { /* */ }
-    }
-    return entries;
-  }
-
   async function fetchUnitFiles(entryUrl) {
     const html = await fetchGBKText(entryUrl);
     const doc = parseHTML(html);
@@ -274,13 +292,7 @@
     return out;
   }
 
-  function courseNameFromTitle(title) {
-    const m = String(title || '').match(/网络课程\s*[—–-]\s*(.+)$/);
-    if (m) return sanitizeName(m[1]).slice(0, 80);
-    return sanitizeName(String(title || '').replace(/\s*[-—–|].*$/, '').trim() || '课件').slice(0, 80);
-  }
-
-  /** 一次汇总：课程资源树 + 全部单元 */
+  /** 一次汇总两侧，互不依赖当前 frame 是否已打开对应列表 */
   async function scanAll(onProgress) {
     const report = (t) => { if (onProgress) onProgress(t); };
 
@@ -292,31 +304,51 @@
       } catch { /* */ }
     }
 
-    const root = makeFolder(courseName, [], location.href);
-    let resCount = 0, unitCount = 0, unitFileCount = 0;
+    const lid = discoverCourseId();
     const failures = [];
+    let resourceTree = makeFolder('课程资源', [], location.href);
+    resourceTree.id = 'section-resource';
+    let unitTree = makeFolder('单元学习', ['单元学习'], location.href);
+    unitTree.id = 'section-unit';
 
-    // ---- 课程资源树 ----
+    // ---- 课程资源：无论当前在哪个页面，都主动拉 listview 根目录树 ----
     report('正在扫描课程资源目录树…');
-    const listDocs = findListDocs().filter((d) => !d.isUnitRes);
-    if (listDocs.length) {
-      let ctx = listDocs.find((d) => d.hasTable) || listDocs[0];
-      let lid = '';
-      try { lid = new URL(ctx.url).searchParams.get('lid') || ''; } catch { /* */ }
+    if (lid) {
       try {
-        const rootUrl = lid
-          ? absUrl('listview.jsp?acttype=enter&folderid=0&lid=' + encodeURIComponent(lid), ctx.url)
-          : ctx.url;
-        const tree = await scanFolder(rootUrl, '课程资源', [], new Set());
-        tree.id = 'section-resource';
-        root.children.push(tree);
-        resCount = flattenFiles(tree).length;
-      } catch (e) {
-        failures.push({ title: '课程资源', error: e && e.message ? e.message : String(e) });
+        const rootUrl = ORIGIN + '/meol/common/script/listview.jsp?acttype=enter&folderid=0&lid=' + encodeURIComponent(lid);
+        resourceTree = await scanFolder(rootUrl, '课程资源', [], new Set());
+        resourceTree.id = 'section-resource';
+      } catch (e1) {
+        // 兼容其它 list 路径
+        try {
+          const alt = ORIGIN + '/meol/jpk/course/layout/newpage/listview.jsp?acttype=enter&folderid=0&lid=' + encodeURIComponent(lid);
+          resourceTree = await scanFolder(alt, '课程资源', [], new Set());
+          resourceTree.id = 'section-resource';
+        } catch (e2) {
+          resourceTree.scanError = (e2 && e2.message) || String(e2);
+          failures.push({ section: '课程资源', title: '目录树', error: resourceTree.scanError });
+        }
+      }
+    } else {
+      // 从当前 frame 里已有的 listview 补扫
+      let foundList = false;
+      for (const win of walkWindows(window)) {
+        try {
+          if (!/listview\.jsp/i.test(win.location.href)) continue;
+          if (!win.document || !win.document.querySelector('table.valuelist')) continue;
+          foundList = true;
+          resourceTree = await scanFolder(win.location.href, '课程资源', [], new Set());
+          resourceTree.id = 'section-resource';
+          break;
+        } catch { /* */ }
+      }
+      if (!foundList) {
+        resourceTree.scanError = '未能定位课程 id，请先进入课程资源或单元学习页面';
+        failures.push({ section: '课程资源', title: '目录树', error: resourceTree.scanError });
       }
     }
 
-    // ---- 单元学习：探测并抓取全部单元 ----
+    // ---- 单元学习：探测全部单元并逐个读取 ----
     report('正在探测全部单元…');
     let unitIndex = [];
     for (const win of walkWindows(window)) {
@@ -326,22 +358,7 @@
       } catch { /* */ }
     }
 
-    // 当前已加载 frame 里的资源（可能属于某一单元）
-    const frameFiles = [];
-    const seenFrame = new Set();
-    for (const win of walkWindows(window)) {
-      try {
-        for (const f of extractPreviewLinks(win.document)) {
-          if (seenFrame.has(f.id)) continue;
-          seenFrame.add(f.id);
-          frameFiles.push(f);
-        }
-      } catch { /* */ }
-    }
-
-    const unitRoot = makeFolder('单元学习', ['单元学习'], location.href);
-    unitRoot.id = 'section-unit';
-
+    let unitFileCount = 0;
     if (unitIndex.length) {
       const merged = new Map();
       let done = 0;
@@ -354,41 +371,56 @@
           for (const f of files) {
             if (merged.has(f.id)) continue;
             merged.set(f.id, f);
-            folder.children.push(makeFile(f, ['单元学习', entry.title]));
+            folder.children.push(makeFile(f, ['单元学习', entry.title], 'unit'));
           }
-          unitRoot.children.push(folder);
+          unitTree.children.push(folder);
           unitFileCount += files.length;
         } catch (e) {
-          failures.push({ title: entry.title, error: e && e.message ? e.message : String(e) });
+          failures.push({ section: '单元学习', title: entry.title, error: e && e.message ? e.message : String(e) });
           const folder = makeFolder(entry.title, ['单元学习', entry.title], entry.entryUrl);
           folder.scanError = e && e.message ? e.message : String(e);
-          unitRoot.children.push(folder);
+          unitTree.children.push(folder);
         }
         await sleep(40);
       }
-      unitCount = unitIndex.length;
-    } else if (frameFiles.length) {
-      // 未解析出单元索引时，退回当前页面资源
-      const folder = makeFolder('当前页面', ['单元学习', '当前页面'], location.href);
-      for (const f of frameFiles) folder.children.push(makeFile(f, ['单元学习', '当前页面']));
-      unitRoot.children.push(folder);
-      unitFileCount = frameFiles.length;
-      unitCount = 1;
+    } else {
+      // 退回：当前 frame 里已有的预览链接
+      const frameFiles = [];
+      const seen = new Set();
+      for (const win of walkWindows(window)) {
+        try {
+          for (const f of extractPreviewLinks(win.document)) {
+            if (seen.has(f.id)) continue;
+            seen.add(f.id);
+            frameFiles.push(f);
+          }
+        } catch { /* */ }
+      }
+      if (frameFiles.length) {
+        const folder = makeFolder('当前页面', ['单元学习', '当前页面'], location.href);
+        for (const f of frameFiles) folder.children.push(makeFile(f, ['单元学习', '当前页面'], 'unit'));
+        unitTree.children.push(folder);
+        unitFileCount = frameFiles.length;
+      } else {
+        unitTree.scanError = '未探测到单元列表';
+      }
     }
 
-    if (unitRoot.children.length) root.children.push(unitRoot);
-
-    const files = flattenFiles(root);
+    const resourceFiles = flattenFiles(resourceTree);
+    const unitFiles = flattenFiles(unitTree);
     return {
       ok: true,
       courseName,
-      tree: root,
-      files,
+      lid,
+      resourceTree,
+      unitTree,
+      resourceFiles,
+      unitFiles,
       stats: {
-        resourceFiles: resCount,
-        units: unitCount,
-        unitFiles: unitFileCount,
-        total: files.length,
+        resourceFiles: resourceFiles.length,
+        units: unitIndex.length || (unitTree.children.length ? unitTree.children.length : 0),
+        unitFiles: unitFiles.length,
+        total: resourceFiles.length + unitFiles.length,
       },
       unitIndex,
       failures,
@@ -397,9 +429,21 @@
 
   // ---------- UI ----------
   const state = {
-    courseName: '课件', tree: null, files: [], stats: null, failures: [],
-    group: 'all', query: '', selected: new Set(), collapsed: new Set(),
-    scanning: false, downloading: false,
+    courseName: '课件',
+    tab: 'resource', // resource | unit
+    resourceTree: null,
+    unitTree: null,
+    resourceFiles: [],
+    unitFiles: [],
+    files: [],
+    stats: null,
+    failures: [],
+    group: 'all',
+    query: '',
+    selected: new Set(),
+    collapsed: new Set(),
+    scanning: false,
+    downloading: false,
   };
 
   function mountUI() {
@@ -422,11 +466,10 @@
   pointer-events: auto;
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: min(960px, calc(100vw - 32px));
-  height: min(680px, calc(100vh - 32px));
+  width: min(980px, calc(100vw - 32px));
+  height: min(700px, calc(100vh - 32px));
   display: flex; flex-direction: column;
-  background: #fff;
-  color: #0f172a;
+  background: #fff; color: #0f172a;
   border-radius: 18px;
   box-shadow: 0 25px 70px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.06);
   overflow: hidden;
@@ -435,23 +478,19 @@
 .dialog.dragging { user-select: none; }
 .top {
   display: flex; align-items: center; gap: 14px;
-  padding: 16px 18px 14px;
+  padding: 14px 18px;
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #2563eb 140%);
-  color: #fff;
-  cursor: grab;
+  color: #fff; cursor: grab;
 }
 .top:active { cursor: grabbing; }
 .mark {
   width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
   background: rgba(255,255,255,.14); font-size: 18px; flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
 .titles { flex: 1; min-width: 0; }
-.titles h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: .01em; }
+.titles h1 { margin: 0; font-size: 16px; font-weight: 700; }
 .sub { margin: 3px 0 0; font-size: 12px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stats {
-  display: flex; gap: 8px; flex-wrap: wrap; margin-right: 4px;
-}
+.stats { display: flex; gap: 8px; flex-wrap: wrap; }
 .stat {
   background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.12);
   border-radius: 999px; padding: 4px 10px; font-size: 12px; white-space: nowrap;
@@ -474,9 +513,40 @@ button.soft {
 }
 button.soft:hover { background: #e2e8f0; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.main-tabs {
+  display: flex; gap: 8px; padding: 12px 16px 0; background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+.main-tab {
+  border: 1px solid #e2e8f0; background: #fff; color: #64748b;
+  border-radius: 12px 12px 0 0; border-bottom: none;
+  padding: 10px 18px; cursor: pointer; font: inherit; font-weight: 650;
+}
+.main-tab:hover { color: #0f172a; }
+.main-tab.active {
+  background: #fff; color: #0f172a; border-color: #e2e8f0;
+  box-shadow: 0 -2px 0 #2563eb inset;
+}
+.main-tab .cnt {
+  display: inline-block; margin-left: 6px; background: #e2e8f0; color: #334155;
+  border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 600;
+}
+.main-tab.active .cnt { background: #dbeafe; color: #1d4ed8; }
+
+.status {
+  padding: 8px 16px; font-size: 12px; color: #475569; background: #fff;
+  border-bottom: 1px solid #f1f5f9; min-height: 34px; display: flex; align-items: center; gap: 8px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
+.dot.ok { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+.dot.err { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.15); }
+.dot.busy { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+
 .toolbar {
   display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0; background: #f8fafc; flex-wrap: wrap;
+  border-bottom: 1px solid #e2e8f0; background: #fff; flex-wrap: wrap;
 }
 .types { display: flex; gap: 4px; flex-wrap: wrap; }
 .type {
@@ -484,34 +554,23 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   border-radius: 999px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 12px;
 }
 .type:hover { background: #e2e8f0; color: #0f172a; }
-.type.active {
-  background: #0f172a; color: #fff; border-color: #0f172a; font-weight: 600;
-}
+.type.active { background: #0f172a; color: #fff; border-color: #0f172a; font-weight: 600; }
 .search {
   flex: 1; min-width: 140px; max-width: 240px;
   border: 1px solid #e2e8f0; border-radius: 999px; padding: 7px 14px;
   font: inherit; background: #fff; color: inherit;
 }
 .search:focus { outline: 2px solid #93c5fd; border-color: #3b82f6; }
-.body {
-  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: 0;
-}
+
+.body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; }
 .tree {
   overflow: auto; padding: 10px 8px 14px;
-  background:
-    radial-gradient(circle at top left, rgba(37,99,235,.05), transparent 40%),
-    #fff;
+  background: radial-gradient(circle at top left, rgba(37,99,235,.05), transparent 40%), #fff;
 }
-.empty {
-  padding: 48px 24px; text-align: center; color: #64748b;
-}
+.empty { padding: 48px 24px; text-align: center; color: #64748b; }
 .empty strong { display: block; color: #0f172a; margin-bottom: 6px; font-size: 15px; }
-.row {
-  display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px;
-}
+.row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; }
 .row:hover { background: #f1f5f9; }
-.row.section { background: #f8fafc; margin-top: 8px; }
-.row.section:hover { background: #eef2ff; }
 .twisty {
   width: 18px; height: 18px; border: none; background: transparent; color: #94a3b8;
   cursor: pointer; border-radius: 4px; font-size: 11px;
@@ -534,6 +593,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ext { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .kids { margin-left: 18px; border-left: 1px dashed #e2e8f0; padding-left: 4px; }
 .kids.collapsed { display: none; }
+
 .side {
   border-left: 1px solid #e2e8f0; background: #fcfdff;
   display: flex; flex-direction: column; min-height: 0;
@@ -543,29 +603,29 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: flex; justify-content: space-between; align-items: center;
 }
 .side .list { flex: 1; overflow: auto; padding: 0 8px 8px; }
+.sec-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: #1d4ed8; background: #eff6ff; border-radius: 6px;
+  padding: 4px 8px; margin: 8px 4px 4px;
+}
+.sec-label.unit { color: #0f766e; background: #ecfdf5; }
 .side .item {
-  font-size: 12px; color: #475569; padding: 6px 8px; border-radius: 8px;
+  font-size: 12px; color: #475569; padding: 5px 8px; border-radius: 8px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .side .item:hover { background: #f1f5f9; }
+.tag {
+  display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px;
+  padding: 1px 5px; margin-right: 6px; vertical-align: middle;
+}
+.tag.resource { background: #dbeafe; color: #1d4ed8; }
+.tag.unit { background: #d1fae5; color: #0f766e; }
 .foot {
   padding: 12px 16px; border-top: 1px solid #e2e8f0; background: #f8fafc;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .foot .meta { font-size: 12px; color: #64748b; }
 .foot .meta strong { color: #0f172a; }
 .note { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-.status {
-  padding: 8px 16px; font-size: 12px; color: #475569; background: #fff;
-  border-bottom: 1px solid #f1f5f9; min-height: 34px; display: flex; align-items: center; gap: 8px;
-}
-.dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0;
-}
-.dot.ok { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
-.dot.err { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.15); }
-.dot.busy { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); animation: pulse 1s infinite; }
-@keyframes pulse { 50% { opacity: .45; } }
 @media (max-width: 760px) {
   .body { grid-template-columns: 1fr; }
   .side { display: none; }
@@ -587,7 +647,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       <button class="ghost" id="btnClose" type="button">关闭</button>
     </div>
   </header>
-  <div class="status" id="status"><span class="dot busy"></span><span id="statusText">正在一次性汇总课程资源与全部单元…</span></div>
+  <nav class="main-tabs" id="mainTabs" aria-label="板块">
+    <button class="main-tab active" data-tab="resource" type="button">课程资源 <span class="cnt" id="cntRes">0</span></button>
+    <button class="main-tab" data-tab="unit" type="button">单元学习 <span class="cnt" id="cntUnit">0</span></button>
+  </nav>
+  <div class="status" id="status"><span class="dot busy"></span><span id="statusText">正在汇总课程资源与全部单元…</span></div>
   <div class="toolbar">
     <div class="types" id="types">
       <button class="type active" data-g="all" type="button">全部</button>
@@ -612,7 +676,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       <div class="foot">
         <div class="meta">
           <div>保存到下载目录 / <strong id="saveName">课件</strong> / 目录</div>
-          <div class="note" id="dlNote">勾选后点右上角「下载所选」</div>
+          <div class="note" id="dlNote">已选会按「课程资源 / 单元学习」分组</div>
         </div>
       </div>
     </aside>
@@ -624,14 +688,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     const $ = (id) => shadow.getElementById(id);
     const els = {
       course: $('course'), stats: $('stats'), status: $('status'), statusText: $('statusText'),
-      tree: $('tree'), types: $('types'), q: $('q'),
+      tree: $('tree'), types: $('types'), q: $('q'), mainTabs: $('mainTabs'),
+      cntRes: $('cntRes'), cntUnit: $('cntUnit'),
       btnScan: $('btnScan'), btnDl: $('btnDl'), btnClose: $('btnClose'),
       btnExp: $('btnExp'), btnCol: $('btnCol'), btnSelVis: $('btnSelVis'), btnClr: $('btnClr'),
       selList: $('selList'), selN: $('selN'), saveName: $('saveName'), dlNote: $('dlNote'),
       dialog: shadow.querySelector('.dialog'), dragBar: $('dragBar'), scrim: $('scrim'),
     };
 
-    // 拖拽弹窗
     (function enableDrag() {
       let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
       const dialog = els.dialog;
@@ -652,10 +716,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
         dialog.style.left = Math.max(8, Math.min(window.innerWidth - 120, ox + e.clientX - sx)) + 'px';
         dialog.style.top = Math.max(8, Math.min(window.innerHeight - 80, oy + e.clientY - sy)) + 'px';
       }
-      function onUp() {
-        dragging = false;
-        dialog.classList.remove('dragging');
-      }
+      function onUp() { dragging = false; dialog.classList.remove('dragging'); }
       els.dragBar.addEventListener('mousedown', onDown);
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
@@ -665,6 +726,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       els.statusText.textContent = text;
       const dot = els.status.querySelector('.dot');
       dot.className = 'dot' + (kind ? ' ' + kind : ' busy');
+    }
+
+    function currentTree() {
+      return state.tab === 'unit' ? state.unitTree : state.resourceTree;
+    }
+    function currentFiles() {
+      return state.tab === 'unit' ? state.unitFiles : state.resourceFiles;
     }
 
     function matches(f) {
@@ -721,26 +789,50 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       return dir ? dir + '/' + f.name : f.name;
     }
 
+    function findFile(id) {
+      return state.files.find((x) => x.id === id);
+    }
+
     function updateSel() {
       els.selN.textContent = String(state.selected.size);
       els.btnDl.disabled = state.selected.size === 0 || state.scanning || state.downloading;
       els.saveName.textContent = state.courseName || '课件';
       els.selList.innerHTML = '';
+
+      const resSel = [];
+      const unitSel = [];
       for (const id of state.selected) {
-        const f = state.files.find((x) => x.id === id);
+        const f = findFile(id);
         if (!f) continue;
-        const d = document.createElement('div');
-        d.className = 'item';
-        d.textContent = relPath(f);
-        els.selList.appendChild(d);
+        if (f.section === 'unit') unitSel.push(f);
+        else resSel.push(f);
       }
+
+      function addGroup(title, list, cls) {
+        if (!list.length) return;
+        const lab = document.createElement('div');
+        lab.className = 'sec-label' + (cls ? ' ' + cls : '');
+        lab.textContent = title + ' · ' + list.length;
+        els.selList.appendChild(lab);
+        for (const f of list) {
+          const d = document.createElement('div');
+          d.className = 'item';
+          d.innerHTML = '<span class="tag ' + (f.section === 'unit' ? 'unit' : 'resource') + '"></span><span></span>';
+          d.querySelector('.tag').textContent = f.section === 'unit' ? '单元' : '资源';
+          d.querySelector('span:last-child').textContent = relPath(f);
+          els.selList.appendChild(d);
+        }
+      }
+      addGroup('课程资源', resSel, '');
+      addGroup('单元学习', unitSel, 'unit');
+
       for (const input of els.tree.querySelectorAll('input[data-id]')) {
         const id = input.dataset.id;
         if (input.dataset.kind === 'file') {
           input.checked = state.selected.has(id);
           input.indeterminate = false;
         } else {
-          const node = findNode(state.tree, id);
+          const node = findNode(currentTree(), id);
           if (!node) continue;
           const files = flattenFiles(node).filter(matches);
           if (!files.length) { input.checked = false; input.indeterminate = false; input.disabled = true; continue; }
@@ -761,11 +853,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       return ({ pdf: 'P', ppt: 'S', word: 'W', excel: 'X', archive: 'Z', other: 'F' })[iconClass(n)] || 'F';
     }
 
-    function renderNode(node, isSection) {
+    function renderNode(node) {
       if (!nodeVisible(node)) return null;
       const wrap = document.createElement('div');
       const row = document.createElement('div');
-      row.className = 'row' + (isSection ? ' section' : '');
+      row.className = 'row';
       const isFolder = node.type === 'folder';
       const collapsed = state.collapsed.has(node.id);
 
@@ -821,7 +913,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
         const kids = document.createElement('div');
         kids.className = 'kids' + (collapsed ? ' collapsed' : '');
         for (const c of node.children || []) {
-          const el = renderNode(c, false);
+          const el = renderNode(c);
           if (el) kids.appendChild(el);
         }
         wrap.appendChild(kids);
@@ -831,14 +923,19 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
     function renderTree() {
       els.tree.innerHTML = '';
-      if (!state.tree) {
-        els.tree.innerHTML = '<div class="empty"><strong>正在汇总资源…</strong>课程资源目录树与全部单元会一次列出</div>';
+      const tree = currentTree();
+      const label = state.tab === 'unit' ? '单元学习' : '课程资源';
+      if (!tree || (!tree.children || !tree.children.length) && tree.scanError) {
+        els.tree.innerHTML = '<div class="empty"><strong>' + label + '暂无内容</strong>' + (tree && tree.scanError ? tree.scanError : '点「重新汇总」再试') + '</div>';
         return;
       }
-      for (const child of state.tree.children || []) {
-        const el = renderNode(child, true);
-        if (el) els.tree.appendChild(el);
+      if (!tree) {
+        els.tree.innerHTML = '<div class="empty"><strong>正在汇总…</strong>' + label + '会单独列出</div>';
+        return;
       }
+      const el = renderNode(tree);
+      if (el) els.tree.appendChild(el);
+      else els.tree.innerHTML = '<div class="empty"><strong>当前筛选下无文件</strong>可切换类型或清空搜索</div>';
       updateSel();
     }
 
@@ -847,7 +944,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       els.stats.innerHTML =
         '<span class="stat">资源 ' + stats.resourceFiles + '</span>' +
         '<span class="stat">单元 ' + stats.units + '</span>' +
-        '<span class="stat">共 ' + stats.total + ' 个文件</span>';
+        '<span class="stat">共 ' + stats.total + '</span>';
+      els.cntRes.textContent = String(stats.resourceFiles);
+      els.cntUnit.textContent = String(stats.unitFiles);
     }
 
     function expandDepth(node, d) {
@@ -862,18 +961,21 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
         return;
       }
       state.courseName = result.courseName || '课件';
-      state.tree = result.tree;
-      state.files = result.files || flattenFiles(result.tree);
+      state.resourceTree = result.resourceTree;
+      state.unitTree = result.unitTree;
+      state.resourceFiles = result.resourceFiles || [];
+      state.unitFiles = result.unitFiles || [];
+      state.files = [...state.resourceFiles, ...state.unitFiles];
       state.stats = result.stats;
       state.failures = result.failures || [];
       state.selected.clear();
       state.collapsed.clear();
-      expandDepth(state.tree, 2);
-      els.course.textContent = state.courseName + ' · 课程资源 + 单元学习已汇总';
+      expandDepth(state.resourceTree, 2);
+      expandDepth(state.unitTree, 2);
+      els.course.textContent = state.courseName + ' · 资源 ' + state.stats.resourceFiles + ' / 单元文件 ' + state.stats.unitFiles;
       renderStats(state.stats);
-      let msg = '已汇总 ' + (state.stats ? state.stats.total : state.files.length) + ' 个文件';
+      let msg = '已汇总：课程资源 ' + state.stats.resourceFiles + ' 个，单元学习 ' + state.stats.unitFiles + ' 个（' + state.stats.units + ' 个单元）';
       if (state.failures.length) msg += '，' + state.failures.length + ' 项读取失败';
-      msg += '。勾选后点「下载所选」。';
       setStatus(msg, state.failures.length ? '' : 'ok');
       renderTree();
     }
@@ -907,9 +1009,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     }
 
     async function doDownload() {
-      const items = [...state.selected]
-        .map((id) => state.files.find((f) => f.id === id))
-        .filter(Boolean);
+      const items = [...state.selected].map(findFile).filter(Boolean);
       if (!items.length) return;
       state.downloading = true;
       els.btnDl.disabled = true;
@@ -917,17 +1017,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       setStatus('正在触发 ' + items.length + ' 个下载…', 'busy');
       let done = 0;
       for (const f of items) {
-        triggerDownload(f.downloadUrl, (state.courseName || '课件') + '/' + relPath(f));
+        const section = f.section === 'unit' ? '单元学习' : '课程资源';
+        triggerDownload(f.downloadUrl, (state.courseName || '课件') + '/' + section + '/' + relPath(f));
         done += 1;
         setStatus('已触发 ' + done + ' / ' + items.length + '：' + f.name, 'busy');
         await sleep(260);
       }
       setStatus('已触发全部 ' + items.length + ' 个下载。请到浏览器下载列表核对。', 'ok');
-      els.dlNote.textContent = '「已触发」≠「已保存完成」';
+      els.dlNote.textContent = '路径含「课程资源 / 单元学习」分组';
       state.downloading = false;
       updateSel();
     }
 
+    els.mainTabs.addEventListener('click', (e) => {
+      const b = e.target.closest('.main-tab');
+      if (!b) return;
+      state.tab = b.dataset.tab;
+      for (const x of els.mainTabs.querySelectorAll('.main-tab')) x.classList.toggle('active', x === b);
+      renderTree();
+    });
     els.btnScan.addEventListener('click', () => doScan());
     els.btnDl.addEventListener('click', () => doDownload());
     els.btnClose.addEventListener('click', () => host.remove());
@@ -940,11 +1048,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
           for (const c of n.children || []) walk(c);
         }
       };
-      if (state.tree) walk(state.tree);
+      const tree = currentTree();
+      if (tree) walk(tree);
       renderTree();
     });
     els.btnSelVis.addEventListener('click', () => {
-      for (const f of collectVisible(state.tree)) state.selected.add(f.id);
+      for (const f of collectVisible(currentTree())) state.selected.add(f.id);
       updateSel();
     });
     els.btnClr.addEventListener('click', () => { state.selected.clear(); updateSel(); });
