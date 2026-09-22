@@ -1,21 +1,24 @@
+<!-- AI生成 -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>北化课件下载</title>
+<title>课程资源助手</title>
 <meta name="description" content="北京化工大学 THEOL 教学平台课件批量下载工具。一次汇总课程资源与单元学习，树状勾选，优先打包 ZIP。书签安装，本地运行。">
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
 <a class="skip-link" href="#main">跳到主要内容</a>
 
 <header class="site-header">
   <div class="brand">
     <span class="logo">⬇</span>
     <div>
-      <strong>北化课件下载</strong>
-      <small>THEOL Courseware Downloader</small>
+      <strong>课程资源助手</strong>
+      <small>Course Resource Assistant</small>
     </div>
   </div>
   <nav class="site-nav" aria-label="页面导航">
@@ -36,7 +39,7 @@
       <p class="lede">在课程页打开面板，自动汇总<strong>课程资源</strong>与<strong>单元学习全部单元</strong>。树状勾选后优先打包成一个 ZIP，也可在设置中改为批量逐个下载。</p>
       <p class="disclaimer">非学校官方产品。请遵守学校规定，仅下载你有权访问的课程资料。</p>
       <div class="hero-actions">
-        <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏安装</a>
+        <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏：课程资源助手</a>
         <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
       </div>
       <p id="copy-status" class="status" role="status" aria-live="polite"></p>
@@ -46,7 +49,7 @@
       <div class="fake-window">
         <div class="fake-top">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <em>北化课件下载</em>
+          <em>课程资源助手</em>
         </div>
         <div class="fake-tabs">
           <span class="on">课程资源</span><span>单元学习</span>
@@ -66,12 +69,41 @@
 
   <section id="install" class="section">
     <h2>安装</h2>
-    <ol class="steps">
-      <li><strong>显示书签栏</strong>：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（macOS <kbd>⌥</kbd>+<kbd>⌘</kbd>+<kbd>B</kbd>）</li>
-      <li><strong>拖入书签</strong>：把上方按钮拖到书签栏；若拖拽无效，点「复制书签代码」后手动新建书签并粘贴网址</li>
-      <li><strong>在课程页使用</strong>：登录 course.buct.edu.cn，进入某门课的课程资源或单元学习，点击书签</li>
-    </ol>
-    <p class="hint">不要在本页点击书签按钮。书签代码完整保存在本地书签中，不依赖远程脚本。</p>
+    <div class="install-grid">
+      <ol class="steps">
+        <li><strong>显示书签栏</strong>：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（macOS <kbd>⌥</kbd>+<kbd>⌘</kbd>+<kbd>B</kbd>）</li>
+        <li><strong>拖入书签</strong>：按住上方蓝色按钮，拖到书签栏空白处松开</li>
+        <li><strong>在课程页使用</strong>：登录 course.buct.edu.cn，进入课程，点书签栏「课程资源助手」</li>
+      </ol>
+      <div class="tutorial">
+        <h3>拖动安装演示</h3>
+        <p class="cap">按住按钮 → 拖到书签栏 → 松开</p>
+        <div class="demo play" aria-label="拖动安装动画演示">
+          <div class="demo-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span>vg188.github.io/THEOL-downloader</span>
+          </div>
+          <div class="demo-bookmarks">
+            <span class="bm-label">书签栏</span>
+            <span class="demo-bm-target">课程资源助手</span>
+          </div>
+          <div class="demo-body">
+            <div class="demo-btn"><span class="grip">⠿</span> 拖到书签栏：课程资源助手</div>
+          </div>
+          <div class="demo-cursor">
+            <svg viewBox="0 0 16 22" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#0f172a" stroke="#fff" stroke-width="1.2" d="M2 1l11 10-5 1 3 7-3 1-3-7-3 4z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="demo-steps">
+          <span class="step-1">1 显示书签栏</span>
+          <span class="step-2">2 拖入按钮</span>
+          <span class="step-3">3 课程页点击</span>
+        </div>
+      </div>
+    </div>
+    <p class="hint">若拖拽无效：点「复制书签代码」→ 书签管理器新建书签 → 名称「课程资源助手」→ 网址粘贴。不要在本页点击书签按钮。</p>
   </section>
 
   <section id="features" class="section">
@@ -144,7 +176,7 @@
 </main>
 
 <footer class="site-footer">
-  <p>北化课件下载 · 非学校官方 · <a href="https://github.com/vg188/THEOL-downloader">源码</a> · <a href="privacy.html">隐私说明</a></p>
+  <p>课程资源助手 · 非学校官方 · <a href="https://github.com/vg188/THEOL-downloader">源码</a> · <a href="privacy.html">隐私说明</a></p>
 </footer>
 
 <script src="site.js"></script>

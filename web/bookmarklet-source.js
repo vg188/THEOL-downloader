@@ -1,9 +1,9 @@
-/* 北化课件下载 — 自包含书签
+/* 课程资源助手 — 自包含书签
  * 弹窗；课程资源 / 单元学习；优先 ZIP；可配置目录结构与打包策略。
  */
 (() => {
   'use strict';
-  const VERSION = '2.4.0';
+  const VERSION = '2.5.0';
   const HOST_ID = 'buct-tab-dl-host';
   const SETTINGS_KEY = 'buct-dl-settings-v1';
 
@@ -12,7 +12,7 @@
     return;
   }
   if (!/course\.buct\.edu\.cn$/i.test(location.hostname)) {
-    alert('请在 course.buct.edu.cn 的课程页运行「北化课件下载」');
+    alert('请在 course.buct.edu.cn 的课程页运行「课程资源助手」');
     return;
   }
 
@@ -592,14 +592,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .empty { padding: 48px 24px; text-align: center; color: #64748b; }
 .empty strong { display: block; color: #0f172a; margin-bottom: 6px; font-size: 15px; }
-.row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; min-height: 28px; }
 .row:hover { background: #f1f5f9; }
 .twisty {
   width: 18px; height: 18px; border: none; background: transparent; color: #94a3b8;
-  cursor: pointer; border-radius: 4px; font-size: 11px;
+  cursor: pointer; border-radius: 4px; font-size: 10px; line-height: 1;
+  padding: 0; margin: 0; display: inline-grid; place-items: center;
+  flex-shrink: 0; user-select: none;
 }
+.twisty:hover { background: #e2e8f0; color: #334155; }
 .twisty.leaf { visibility: hidden; }
-.chk { width: 15px; height: 15px; accent-color: #2563eb; cursor: pointer; }
+.chk { width: 15px; height: 15px; accent-color: #2563eb; cursor: pointer; margin: 0; flex-shrink: 0; }
 .ico {
   width: 20px; height: 20px; border-radius: 6px; display: inline-grid; place-items: center;
   font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
@@ -666,11 +669,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 </style>
 <div class="scrim" id="scrim"></div>
-<div class="dialog" role="dialog" aria-label="北化课件下载">
+<div class="dialog" role="dialog" aria-label="课程资源助手">
   <header class="top" id="dragBar">
     <div class="mark">⬇</div>
     <div class="titles">
-      <h1>北化课件下载</h1>
+      <h1>课程资源助手</h1>
       <p class="sub" id="course">正在识别课程…</p>
     </div>
     <div class="stats" id="stats"></div>
@@ -944,6 +947,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       tw.type = 'button';
       tw.className = 'twisty' + (isFolder ? '' : ' leaf');
       tw.textContent = collapsed ? '▶' : '▼';
+      tw.setAttribute('aria-hidden', 'true');
       if (isFolder) tw.addEventListener('click', (e) => {
         e.stopPropagation();
         if (state.collapsed.has(node.id)) state.collapsed.delete(node.id);
