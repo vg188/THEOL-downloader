@@ -4,115 +4,133 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>北化课件下载 · 标签版</title>
-<meta name="description" content="THEOL 教学平台课件批量下载的标签版：全屏面板、目录树勾选、类型筛选、一键下载。书签安装，无需扩展。非学校官方产品。">
+<meta name="description" content="THEOL 课件批量下载标签版：弹窗面板，一次汇总课程资源与全部单元，树状勾选下载。书签安装，非官方。">
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
 <a class="skip-link" href="#main">跳到主要内容</a>
 
 <header class="site-header">
-  <p class="brand">北化课件下载 · 标签版</p>
+  <div class="brand">
+    <span class="logo">⬇</span>
+    <div>
+      <strong>北化课件下载</strong>
+      <small>标签版</small>
+    </div>
+  </div>
   <nav class="site-nav" aria-label="页面导航">
     <a href="#install">安装</a>
-    <a href="#features">功能</a>
-    <a href="#steps">使用步骤</a>
-    <a href="#privacy">隐私</a>
-    <a href="#faq">常见问题</a>
-    <a href="privacy.html">隐私说明</a>
+    <a href="#features">能力</a>
+    <a href="#steps">步骤</a>
+    <a href="#faq">问题</a>
+    <a href="privacy.html">隐私</a>
+    <a class="repo" href="https://github.com/vg188/THEOL-downloader">GitHub</a>
   </nav>
 </header>
 
 <main id="main">
   <section class="hero">
-    <p class="eyebrow">标签版 · 书签安装 · 全屏面板</p>
-    <h1>把 THEOL 课件，勾选后一次带走</h1>
-    <p class="lede">在课程「课程资源」或「单元学习」页点一下书签，打开<strong>完整标签页面板</strong>：目录树勾选、PDF/PPT/Word 等类型筛选、扫描范围标签，确认后批量下载原文件。全程在你的浏览器里完成。</p>
-    <p class="disclaimer"><strong>非官方说明：</strong>本项目是学生自制独立工具，<strong>不是北京化工大学官方产品</strong>。请遵守学校课程资料使用规定，仅下载你有权访问的内容。</p>
-    <ul class="facts">
-      <li>全屏「标签页」界面，不再挤在小弹窗里</li>
-      <li>目录树三态勾选，根目录文件也能选</li>
-      <li>类型筛选：PDF / PPT / Word / Excel / 压缩包 / 其他</li>
-      <li>不上传课件、文件名或账号信息</li>
-    </ul>
+    <div class="hero-copy">
+      <p class="eyebrow">标签版 · 弹窗面板 · 一次汇总</p>
+      <h1>进一门课，<br>课件全部列出来</h1>
+      <p class="lede">在 THEOL 课程页点一下书签，弹出面板并<strong>自动汇总</strong>「课程资源目录树」和「单元学习全部单元」。树状勾选、类型筛选，一次下载带走。</p>
+      <p class="disclaimer">非学校官方工具。请仅下载你有权访问的课程资料。</p>
+      <div class="hero-actions">
+        <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏：北化课件 · 标签版</a>
+        <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
+      </div>
+      <p id="copy-status" class="status" role="status" aria-live="polite"></p>
+      <p class="stamp">书签版本 <code id="bookmarklet-stamp">…</code></p>
+    </div>
+    <div class="hero-card" aria-hidden="true">
+      <div class="fake-window">
+        <div class="fake-top">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <em>北化课件下载 · 标签版</em>
+        </div>
+        <div class="fake-stats"><span>资源 42</span><span>单元 9</span><span>共 67</span></div>
+        <div class="fake-tree">
+          <div class="n folder">▾ 课程资源</div>
+          <div class="n file">　☑ 迈克尔逊干涉仪实验.pptx</div>
+          <div class="n file">　☑ 单缝衍射.pdf</div>
+          <div class="n folder">▾ 单元学习</div>
+          <div class="n folder">　▾ 塞曼效应</div>
+          <div class="n file">　　☑ 塞曼效应记录.pdf</div>
+          <div class="n folder">　▾ 光的偏振</div>
+          <div class="n file">　　□ 光的偏振.pptx</div>
+        </div>
+        <div class="fake-foot"><span>已选 4</span><b>下载所选</b></div>
+      </div>
+    </div>
   </section>
 
   <section id="install" class="section">
-    <h2>安装标签版书签</h2>
-    <div class="cards">
-      <article class="card">
-        <h3>拖到书签栏即可</h3>
-        <p>无需安装扩展、不需要开发者模式。代码完整保存在书签本身里，不依赖远程脚本。</p>
-        <p class="actions">
-          <a id="bookmarklet-install" class="button button-primary" href="#" draggable="true">拖到书签栏：北化课件 · 标签版</a>
-          <button id="copy-bookmarklet" class="button button-secondary" type="button">复制书签代码</button>
-        </p>
-        <p id="copy-status" class="status" role="status" aria-live="polite"></p>
-        <p class="hint">本页书签版本：<code id="bookmarklet-stamp">…</code></p>
-        <p class="hint">桌面浏览器按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（macOS <kbd>⌥</kbd>+<kbd>⌘</kbd>+<kbd>B</kbd>）显示书签栏，再把按钮拖进去。也可以右键按钮「复制链接地址」，新建书签粘贴到网址栏。</p>
-        <p class="hint"><strong>不要在本页点击这个按钮。</strong>请在 THEOL 课程页使用。</p>
+    <h2>三步装好</h2>
+    <ol class="steps">
+      <li><strong>显示书签栏</strong>：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></li>
+      <li><strong>拖按钮进去</strong>：把上方蓝色按钮拖到书签栏</li>
+      <li><strong>课程页点书签</strong>：登录 THEOL，打开某门课，点书签</li>
+    </ol>
+    <p class="hint">拖拽不便时：点「复制书签代码」→ 书签管理器新建书签 → 网址粘贴。不要在本页点书签按钮。</p>
+  </section>
+
+  <section id="features" class="section">
+    <h2>标签版能力</h2>
+    <div class="grid">
+      <article class="feature">
+        <h3>弹窗面板</h3>
+        <p>居中弹窗，可拖拽、可关闭，不霸占整个页面。</p>
+      </article>
+      <article class="feature">
+        <h3>一次汇总</h3>
+        <p>进入课程页自动扫「课程资源 + 全部单元」，不用再逐个点。</p>
+      </article>
+      <article class="feature">
+        <h3>全部单元</h3>
+        <p>自动探测单元列表并逐个读取，而不是只看当前单元。</p>
+      </article>
+      <article class="feature">
+        <h3>树状勾选</h3>
+        <p>文件夹三态勾选，根目录文件也能单独勾。</p>
+      </article>
+      <article class="feature">
+        <h3>类型筛选</h3>
+        <p>PDF / PPT / Word / Excel / 压缩包 / 其他，一键过滤。</p>
+      </article>
+      <article class="feature">
+        <h3>本地运行</h3>
+        <p>书签自包含，不上传课件与账号，不加载远程脚本。</p>
       </article>
     </div>
   </section>
 
-  <section id="features" class="section">
-    <h2>标签版能做什么</h2>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>能力</th><th>说明</th></tr>
-        </thead>
-        <tbody>
-          <tr><th>扫描范围标签</th><td>当前目录 / 目录树 / 当前单元 / 全部单元（按页面自动启用）</td></tr>
-          <tr><th>类型筛选标签</th><td>全部 · PDF · PPT · Word · Excel · 压缩包 · 其他</td></tr>
-          <tr><th>树状勾选</th><td>文件夹三态勾选，课程资源根目录文件也可单独勾</td></tr>
-          <tr><th>批量下载</th><td>逐个触发浏览器下载，保存到「下载目录/课程名/目录/文件名」</td></tr>
-          <tr><th>单元学习</th><td>支持当前单元与确认后的全部单元汇总</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
   <section id="steps" class="section">
-    <h2>三步使用</h2>
+    <h2>使用流程</h2>
     <ol class="steps">
-      <li><strong>安装书签。</strong>把上面的按钮拖到书签栏。</li>
-      <li><strong>打开课件页。</strong>登录 course.buct.edu.cn，进入某门课的「课程资源」目录或「单元学习」。</li>
-      <li><strong>点书签 → 扫描 → 勾选 → 下载。</strong>面板会打开全屏标签界面，勾选后点「下载所选」。</li>
+      <li>登录 <code>course.buct.edu.cn</code>，打开一门课</li>
+      <li>点书签栏「北化课件 · 标签版」</li>
+      <li>弹窗自动汇总资源树与全部单元</li>
+      <li>筛选 / 勾选 →「下载所选」→ 核对浏览器下载列表</li>
     </ol>
-  </section>
-
-  <section id="privacy" class="section">
-    <h2>隐私</h2>
-    <ul>
-      <li>只在 course.buct.edu.cn 页面运行，使用你已登录的浏览器会话</li>
-      <li>不读取、不上传 Cookie、账号、密码</li>
-      <li>不上传课件、文件名、课程名或下载记录</li>
-      <li>没有远程统计、没有第三方脚本</li>
-    </ul>
-    <p>详见 <a href="privacy.html">隐私说明</a>。</p>
   </section>
 
   <section id="faq" class="section">
     <h2>常见问题</h2>
-    <details>
-      <summary>点了书签没反应？</summary>
-      <p>确认当前页是 course.buct.edu.cn 的课程页，且书签代码完整（重新从本页拖一次）。</p>
+    <details open>
+      <summary>为什么要进具体课程页？</summary>
+      <p>书签只在你已登录的 THEOL 页面里读取当前课程可见资源，不能跨课、不能绕过权限。</p>
     </details>
     <details>
-      <summary>扫描到 0 个文件？</summary>
-      <p>进入「课程资源」具体目录或「单元学习」，等列表加载后再点扫描。部分资源在 iframe 里，脚本会递归同源 frame。</p>
+      <summary>汇总很慢？</summary>
+      <p>「全部单元」会逐个读取单元页。单元很多时需要几秒到几十秒，进度会显示在状态栏。</p>
     </details>
     <details>
-      <summary>Chrome 询问是否允许多个下载？</summary>
-      <p>点「允许」。若拒绝，可重新勾选后再次下载。</p>
+      <summary>Chrome 询问多个下载？</summary>
+      <p>点「允许」。若拒绝，重新勾选后再下一次。</p>
     </details>
     <details>
-      <summary>后缀不对？</summary>
-      <p>平台图标（powerpoint.gif 等）会推断后缀；预览页有真实文件名时会尽量补全。仍不对可手动改名。</p>
-    </details>
-    <details>
-      <summary>和 Chrome 插件什么关系？</summary>
-      <p>标签版书签适合快速体验、偶尔下载。插件版（开发中）提供后台队列与下载记录。当前请先用标签版书签。</p>
+      <summary>和插件版什么关系？</summary>
+      <p>标签版书签适合马上用；插件版在开发中，会提供后台队列与下载记录。</p>
     </details>
   </section>
 </main>

@@ -1,16 +1,10 @@
-/* 北化课件下载 · 标签版 — 自包含书签脚本
- * 在 course.buct.edu.cn 课程页运行：全屏标签页面板，树状勾选，类型筛选，批量下载。
- * 不依赖远程运行时，不上传任何数据。
+/* 北化课件下载 · 标签版 v2.1 — 自包含书签
+ * 弹窗面板；进入课程页后一次汇总「课程资源目录树 + 单元学习全部单元」。
  */
 (() => {
   'use strict';
-  const VERSION = '2.0.0-tab';
+  const VERSION = '2.1.0-tab';
   const HOST_ID = 'buct-tab-dl-host';
-  if (window.__buctTabDl) {
-    const prev = document.getElementById(HOST_ID);
-    if (prev) prev.remove();
-    window.__buctTabDl = null;
-  }
 
   if (location.protocol !== 'https:' && location.protocol !== 'http:') {
     alert('请在学校教学平台页面运行此书签');
@@ -21,7 +15,12 @@
     return;
   }
 
-  // ---------- 工具 ----------
+  const old = document.getElementById(HOST_ID);
+  if (old) old.remove();
+  if (window.__buctTabDl && window.__buctTabDl.close) {
+    try { window.__buctTabDl.close(); } catch (_) {}
+  }
+
   const ORIGIN = location.origin;
   const ICON_EXT = {
     'pdf.gif': 'pdf', 'powerpoint.gif': 'pptx', 'ppt.gif': 'ppt', 'pptx.gif': 'pptx',
@@ -37,7 +36,6 @@
     doc: 'word', docx: 'word', xls: 'excel', xlsx: 'excel',
     zip: 'archive', rar: 'archive', '7z': 'archive',
   };
-
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const sanitizeName = (n) => String(n || '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '') || '未命名';
   const hasExt = (n) => /\.[A-Za-z0-9]{1,8}$/.test(String(n || '').split(/[\\/]/).pop() || '');
@@ -78,11 +76,7 @@
 
   function extFromRow(tr) {
     const img = tr.querySelector('img[src*="icons/"], img[src*="image/"]');
-    if (img) {
-      const e = extFromIconSrc(img.getAttribute('src') || '');
-      if (e) return e;
-    }
-    return '';
+    return img ? extFromIconSrc(img.getAttribute('src') || '') : '';
   }
 
   function parseFolderRow(tr, pageUrl) {
@@ -129,7 +123,7 @@
       id: lid + ':' + resid + ':' + fileid,
       name, originalName: sanitizeName((link.textContent || '').trim() || '未命名'),
       downloadUrl, previewUrl: absUrl(link.getAttribute('href') || '', pageUrl),
-      fileid, resid, lid, ext, group: groupOf(ext), sizeText: '',
+      fileid, resid, lid, ext, group: groupOf(ext),
     };
   }
 
@@ -161,7 +155,7 @@
         child.scanError = err && err.message ? err.message : String(err);
         folderNode.children.push(child);
       }
-      await sleep(40);
+      await sleep(35);
     }
     return folderNode;
   }
@@ -194,13 +188,18 @@
         const href = win.location.href;
         const table = doc.querySelector('table.valuelist');
         const isList = /listview\.jsp|resFolderViewList\.do/i.test(href);
-        if (table || isList) found.push({ win, doc, url: href, title: doc.title || '', hasTable: !!table, isUnitRes: /resFolderViewList\.do/i.test(href) });
+        if (table || isList) {
+          found.push({
+            win, doc, url: href, title: doc.title || '', hasTable: !!table,
+            isUnitRes: /resFolderViewList\.do/i.test(href),
+          });
+        }
       } catch { /* */ }
     }
     return found;
   }
 
-  function extractPreviewLinks(doc, courseId) {
+  function extractPreviewLinks(doc) {
     const unique = new Map();
     for (const anchor of doc.querySelectorAll('a[href*="download_preview.jsp"]')) {
       try {
@@ -209,7 +208,6 @@
         const resid = u.searchParams.get('resid') || '';
         const lid = u.searchParams.get('lid') || '';
         if (!fileid || !resid || !lid) continue;
-        if (courseId && lid !== courseId) continue;
         const id = lid + ':' + resid + ':' + fileid;
         if (unique.has(id)) continue;
         const row = anchor.closest('tr,li,div,td') || anchor.parentElement;
@@ -253,7 +251,7 @@
   async function fetchUnitFiles(entryUrl) {
     const html = await fetchGBKText(entryUrl);
     const doc = parseHTML(html);
-    let list = extractPreviewLinks(doc, undefined);
+    let list = extractPreviewLinks(doc);
     const srcs = [...doc.querySelectorAll('iframe[src],frame[src]')].map((f) => absUrl(f.getAttribute('src') || '', entryUrl));
     const m = html.match(/resFolderViewList\.do[^"'\s]*/i);
     if (m) srcs.push(absUrl(m[0].replace(/&amp;/g, '&'), entryUrl));
@@ -261,8 +259,7 @@
       if (!src || !/course\.buct\.edu\.cn/i.test(src)) continue;
       if (!/resFolderViewList|listview|download_preview|colUrlStuView/i.test(src)) continue;
       try {
-        const childDoc = parseHTML(await fetchGBKText(src));
-        list = list.concat(extractPreviewLinks(childDoc, undefined));
+        list = list.concat(extractPreviewLinks(parseHTML(await fetchGBKText(src))));
       } catch { /* */ }
     }
     const seen = new Set(); const unique = [];
@@ -283,58 +280,44 @@
     return sanitizeName(String(title || '').replace(/\s*[-—–|].*$/, '').trim() || '课件').slice(0, 80);
   }
 
-  async function scan(mode) {
-    const listDocs = findListDocs();
-    const wantRes = mode !== 'unit-current' && mode !== 'unit-all';
+  /** 一次汇总：课程资源树 + 全部单元 */
+  async function scanAll(onProgress) {
+    const report = (t) => { if (onProgress) onProgress(t); };
 
-    if (listDocs.length && wantRes) {
-      let ctx = listDocs.find((d) => d.hasTable && !d.isUnitRes) || listDocs.find((d) => d.hasTable) || listDocs[0];
-      const isUnitRes = !!ctx.isUnitRes;
-      let lid = '', listUrl = ctx.url;
-      try { lid = new URL(listUrl).searchParams.get('lid') || ''; } catch { /* */ }
-
-      const currentFolder = makeFolder('当前目录', [], listUrl);
-      for (const tr of extractRows(ctx.doc)) {
-        const file = parseFileRow(tr, listUrl);
-        if (file) { currentFolder.children.push(makeFile(file, [])); continue; }
-        const folder = parseFolderRow(tr, listUrl);
-        if (folder) {
-          const ph = makeFolder(folder.name, [folder.name], folder.url);
-          ph.folderId = folder.folderId;
-          currentFolder.children.push(ph);
-        }
-      }
-
-      let tree = currentFolder;
-      if (mode !== 'directory' && !isUnitRes) {
-        try {
-          const rootUrl = lid ? absUrl('listview.jsp?acttype=enter&folderid=0&lid=' + encodeURIComponent(lid), listUrl) : listUrl;
-          tree = await scanFolder(rootUrl, '课程资源', [], new Set());
-        } catch {
-          try { tree = await scanFolder(listUrl, '课程资源', [], new Set()); }
-          catch (e2) { tree = currentFolder; tree.scanError = e2 && e2.message ? e2.message : String(e2); }
-        }
-      }
-
-      let courseName = '课件';
-      for (const win of walkWindows(window)) {
-        try {
-          const t = win.document && win.document.title;
-          if (t && /网络课程/.test(t)) { courseName = courseNameFromTitle(t); break; }
-        } catch { /* */ }
-      }
-
-      return {
-        ok: true,
-        surface: isUnitRes ? 'unit-study' : 'resource-directory',
-        courseName,
-        modes: isUnitRes ? ['directory', 'unit-current', 'unit-all'] : ['directory', 'tree'],
-        defaultMode: isUnitRes ? 'unit-current' : mode === 'directory' ? 'directory' : 'tree',
-        tree, currentFolder, files: flattenFiles(tree), unitIndex: [],
-      };
+    let courseName = '课件';
+    for (const win of walkWindows(window)) {
+      try {
+        const t = win.document && win.document.title;
+        if (t && /网络课程/.test(t)) { courseName = courseNameFromTitle(t); break; }
+      } catch { /* */ }
     }
 
-    // 单元学习
+    const root = makeFolder(courseName, [], location.href);
+    let resCount = 0, unitCount = 0, unitFileCount = 0;
+    const failures = [];
+
+    // ---- 课程资源树 ----
+    report('正在扫描课程资源目录树…');
+    const listDocs = findListDocs().filter((d) => !d.isUnitRes);
+    if (listDocs.length) {
+      let ctx = listDocs.find((d) => d.hasTable) || listDocs[0];
+      let lid = '';
+      try { lid = new URL(ctx.url).searchParams.get('lid') || ''; } catch { /* */ }
+      try {
+        const rootUrl = lid
+          ? absUrl('listview.jsp?acttype=enter&folderid=0&lid=' + encodeURIComponent(lid), ctx.url)
+          : ctx.url;
+        const tree = await scanFolder(rootUrl, '课程资源', [], new Set());
+        tree.id = 'section-resource';
+        root.children.push(tree);
+        resCount = flattenFiles(tree).length;
+      } catch (e) {
+        failures.push({ title: '课程资源', error: e && e.message ? e.message : String(e) });
+      }
+    }
+
+    // ---- 单元学习：探测并抓取全部单元 ----
+    report('正在探测全部单元…');
     let unitIndex = [];
     for (const win of walkWindows(window)) {
       try {
@@ -343,185 +326,268 @@
       } catch { /* */ }
     }
 
-    const files = [], seen = new Set();
+    // 当前已加载 frame 里的资源（可能属于某一单元）
+    const frameFiles = [];
+    const seenFrame = new Set();
     for (const win of walkWindows(window)) {
       try {
-        for (const f of extractPreviewLinks(win.document, '')) {
-          if (seen.has(f.id)) continue;
-          seen.add(f.id);
-          files.push({ ...f, unitTitle: '当前单元' });
+        for (const f of extractPreviewLinks(win.document)) {
+          if (seenFrame.has(f.id)) continue;
+          seenFrame.add(f.id);
+          frameFiles.push(f);
         }
       } catch { /* */ }
     }
 
-    if (mode === 'unit-all') {
-      if (!unitIndex.length) return { ok: false, error: '未找到单元列表，无法扫描全部单元' };
-      const merged = new Map(files.map((f) => [f.id, f]));
+    const unitRoot = makeFolder('单元学习', ['单元学习'], location.href);
+    unitRoot.id = 'section-unit';
+
+    if (unitIndex.length) {
+      const merged = new Map();
+      let done = 0;
       for (const entry of unitIndex) {
+        done += 1;
+        report('正在读取单元 ' + done + ' / ' + unitIndex.length + '：' + entry.title);
         try {
-          for (const f of await fetchUnitFiles(entry.entryUrl)) {
-            if (!merged.has(f.id)) merged.set(f.id, { ...f, unitTitle: entry.title });
+          const files = await fetchUnitFiles(entry.entryUrl);
+          const folder = makeFolder(entry.title, ['单元学习', entry.title], entry.entryUrl);
+          for (const f of files) {
+            if (merged.has(f.id)) continue;
+            merged.set(f.id, f);
+            folder.children.push(makeFile(f, ['单元学习', entry.title]));
           }
-        } catch { /* */ }
-        await sleep(50);
+          unitRoot.children.push(folder);
+          unitFileCount += files.length;
+        } catch (e) {
+          failures.push({ title: entry.title, error: e && e.message ? e.message : String(e) });
+          const folder = makeFolder(entry.title, ['单元学习', entry.title], entry.entryUrl);
+          folder.scanError = e && e.message ? e.message : String(e);
+          unitRoot.children.push(folder);
+        }
+        await sleep(40);
       }
-      const tree = makeFolder('全部单元', [], location.href);
-      for (const f of merged.values()) tree.children.push(makeFile(f, f.unitTitle ? [f.unitTitle] : []));
-      return {
-        ok: true, surface: 'unit-study', courseName: courseNameFromTitle(document.title),
-        modes: unitIndex.length ? ['unit-current', 'unit-all'] : ['unit-current'],
-        defaultMode: 'unit-current', tree, currentFolder: tree,
-        files: [...merged.values()], unitIndex,
-      };
+      unitCount = unitIndex.length;
+    } else if (frameFiles.length) {
+      // 未解析出单元索引时，退回当前页面资源
+      const folder = makeFolder('当前页面', ['单元学习', '当前页面'], location.href);
+      for (const f of frameFiles) folder.children.push(makeFile(f, ['单元学习', '当前页面']));
+      unitRoot.children.push(folder);
+      unitFileCount = frameFiles.length;
+      unitCount = 1;
     }
 
-    const tree = makeFolder('当前单元', [], location.href);
-    for (const f of files) tree.children.push(makeFile(f, []));
+    if (unitRoot.children.length) root.children.push(unitRoot);
+
+    const files = flattenFiles(root);
     return {
-      ok: true, surface: 'unit-study', courseName: courseNameFromTitle(document.title),
-      modes: unitIndex.length ? ['unit-current', 'unit-all'] : ['unit-current'],
-      defaultMode: 'unit-current', tree, currentFolder: tree, files, unitIndex,
+      ok: true,
+      courseName,
+      tree: root,
+      files,
+      stats: {
+        resourceFiles: resCount,
+        units: unitCount,
+        unitFiles: unitFileCount,
+        total: files.length,
+      },
+      unitIndex,
+      failures,
     };
   }
 
   // ---------- UI ----------
   const state = {
-    courseName: '课件', surface: null, modes: [], mode: 'tree',
-    tree: null, files: [], unitIndex: [],
+    courseName: '课件', tree: null, files: [], stats: null, failures: [],
     group: 'all', query: '', selected: new Set(), collapsed: new Set(),
     scanning: false, downloading: false,
   };
-
-  function esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
 
   function mountUI() {
     let host = document.getElementById(HOST_ID);
     if (host) host.remove();
     host = document.createElement('div');
     host.id = HOST_ID;
-    host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `
 <style>
 :host { all: initial; }
 *, *::before, *::after { box-sizing: border-box; }
-.wrap {
-  position: fixed; inset: 0; display: flex; flex-direction: column;
-  background: #f4f6fb; color: #1c2433;
-  font: 14px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+.scrim {
+  position: absolute; inset: 0; pointer-events: auto;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(3px);
 }
+.dialog {
+  pointer-events: auto;
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(960px, calc(100vw - 32px));
+  height: min(680px, calc(100vh - 32px));
+  display: flex; flex-direction: column;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 18px;
+  box-shadow: 0 25px 70px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  font: 14px/1.5 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.dialog.dragging { user-select: none; }
 .top {
-  display: flex; align-items: center; gap: 16px; padding: 14px 20px;
-  background: #fff; border-bottom: 1px solid #e4e8f0;
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px 14px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #2563eb 140%);
+  color: #fff;
+  cursor: grab;
 }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 180px; }
+.top:active { cursor: grabbing; }
 .mark {
-  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
-  background: linear-gradient(145deg, #3b82f6, #1d4ed8); color: #fff; font-weight: 700;
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: rgba(255,255,255,.14); font-size: 18px; flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
-.brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
-.brand p { margin: 2px 0 0; font-size: 12px; color: #6b7385; }
-.meta { flex: 1; min-width: 0; }
-.course { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hint { color: #6b7385; font-size: 12px; margin-top: 2px; }
+.titles { flex: 1; min-width: 0; }
+.titles h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: .01em; }
+.sub { margin: 3px 0 0; font-size: 12px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-right: 4px;
+}
+.stat {
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px; padding: 4px 10px; font-size: 12px; white-space: nowrap;
+}
 .acts { display: flex; gap: 8px; }
 button {
-  font: inherit; border-radius: 10px; border: 1px solid #e4e8f0; background: #fff;
-  color: #1c2433; padding: 8px 14px; cursor: pointer;
+  font: inherit; border-radius: 10px; border: 1px solid transparent;
+  padding: 8px 14px; cursor: pointer; transition: .15s ease;
 }
-button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-button.accent { background: #0f766e; border-color: #0f766e; color: #fff; }
-button.ghost { border-color: transparent; background: transparent; color: #6b7385; }
+button.primary { background: #fff; color: #0f172a; font-weight: 650; }
+button.primary:hover { background: #e2e8f0; }
+button.accent { background: #10b981; color: #042f1e; font-weight: 700; }
+button.accent:hover { background: #34d399; }
+button.ghost {
+  background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.12);
+}
+button.ghost:hover { background: rgba(255,255,255,.18); }
+button.soft {
+  background: #f1f5f9; color: #334155; border-color: #e2e8f0; font-size: 12px; padding: 6px 10px;
+}
+button.soft:hover { background: #e2e8f0; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-button:hover:not(:disabled) { filter: brightness(0.97); }
-.scopes { display: flex; gap: 8px; padding: 12px 20px 0; flex-wrap: wrap; }
-.scope {
-  border: 1px solid #e4e8f0; background: #fff; color: #6b7385;
-  border-radius: 999px; padding: 7px 13px; cursor: pointer; font: inherit; font-size: 13px;
-}
-.scope.active { background: #1c2433; border-color: #1c2433; color: #fff; }
-.scope:disabled { opacity: 0.35; cursor: not-allowed; }
 .toolbar {
-  display: flex; align-items: center; gap: 10px; padding: 12px 20px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0; background: #f8fafc; flex-wrap: wrap;
 }
 .types { display: flex; gap: 4px; flex-wrap: wrap; }
 .type {
-  border: 1px solid transparent; background: transparent; color: #6b7385;
-  border-radius: 8px; padding: 5px 9px; cursor: pointer; font: inherit; font-size: 13px;
+  border: 1px solid transparent; background: transparent; color: #64748b;
+  border-radius: 999px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 12px;
 }
-.type.active { background: #dbe7ff; color: #1d4ed8; border-color: #c7d8ff; font-weight: 600; }
+.type:hover { background: #e2e8f0; color: #0f172a; }
+.type.active {
+  background: #0f172a; color: #fff; border-color: #0f172a; font-weight: 600;
+}
 .search {
-  flex: 1; min-width: 160px; max-width: 280px; border: 1px solid #e4e8f0; border-radius: 10px;
-  padding: 8px 12px; font: inherit; background: #fff; color: inherit;
+  flex: 1; min-width: 140px; max-width: 240px;
+  border: 1px solid #e2e8f0; border-radius: 999px; padding: 7px 14px;
+  font: inherit; background: #fff; color: inherit;
 }
-.search:focus { outline: 2px solid #bfdbfe; border-color: #2563eb; }
-.main {
-  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px;
-  padding: 0 20px 14px; min-height: 0;
+.search:focus { outline: 2px solid #93c5fd; border-color: #3b82f6; }
+.body {
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: 0;
 }
-.panel {
-  background: #fff; border: 1px solid #e4e8f0; border-radius: 12px; display: flex;
-  flex-direction: column; min-height: 0; overflow: hidden;
+.tree {
+  overflow: auto; padding: 10px 8px 14px;
+  background:
+    radial-gradient(circle at top left, rgba(37,99,235,.05), transparent 40%),
+    #fff;
 }
-.status {
-  padding: 10px 14px; border-bottom: 1px solid #e4e8f0; color: #6b7385; font-size: 13px; background: #fafbff;
+.empty {
+  padding: 48px 24px; text-align: center; color: #64748b;
 }
-.status.ok { color: #0f766e; background: #f0fdfa; }
-.status.err { color: #b91c1c; background: #fef2f2; }
-.tree { overflow: auto; padding: 8px 6px 14px; flex: 1; }
-.empty { padding: 40px 20px; text-align: center; color: #6b7385; }
-.row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; }
-.row:hover { background: #f3f6ff; }
+.empty strong { display: block; color: #0f172a; margin-bottom: 6px; font-size: 15px; }
+.row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px;
+}
+.row:hover { background: #f1f5f9; }
+.row.section { background: #f8fafc; margin-top: 8px; }
+.row.section:hover { background: #eef2ff; }
 .twisty {
-  width: 18px; height: 18px; border: none; background: transparent; color: #6b7385;
+  width: 18px; height: 18px; border: none; background: transparent; color: #94a3b8;
   cursor: pointer; border-radius: 4px; font-size: 11px;
 }
 .twisty.leaf { visibility: hidden; }
 .chk { width: 15px; height: 15px; accent-color: #2563eb; cursor: pointer; }
 .ico {
-  width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 6px; display: inline-grid; place-items: center;
   font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
 }
-.ico.folder { background: #d97706; }
-.ico.pdf { background: #dc2626; }
-.ico.ppt { background: #ea580c; }
-.ico.word { background: #2563eb; }
-.ico.excel { background: #15803d; }
-.ico.archive { background: #6b7280; }
-.ico.other { background: #7c3aed; }
+.ico.folder { background: linear-gradient(145deg, #f59e0b, #d97706); }
+.ico.pdf { background: linear-gradient(145deg, #ef4444, #b91c1c); }
+.ico.ppt { background: linear-gradient(145deg, #f97316, #c2410c); }
+.ico.word { background: linear-gradient(145deg, #3b82f6, #1d4ed8); }
+.ico.excel { background: linear-gradient(145deg, #22c55e, #15803d); }
+.ico.archive { background: linear-gradient(145deg, #64748b, #475569); }
+.ico.other { background: linear-gradient(145deg, #8b5cf6, #6d28d9); }
 .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.badge, .ext { color: #6b7385; font-size: 12px; flex-shrink: 0; }
-.ext { font-size: 11px; text-transform: uppercase; }
-.kids { margin-left: 18px; border-left: 1px solid #e4e8f0; padding-left: 4px; }
+.badge, .ext { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
+.ext { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.kids { margin-left: 18px; border-left: 1px dashed #e2e8f0; padding-left: 4px; }
 .kids.collapsed { display: none; }
-.side { display: flex; flex-direction: column; overflow: hidden; }
-.side h2 { margin: 0; font-size: 13px; padding: 12px 14px 8px; }
-.sel { padding: 12px 14px; border-top: 1px solid #e4e8f0; background: #fcfdff; font-size: 13px; }
-.sel .muted { color: #6b7385; font-size: 12px; margin-top: 4px; }
-.foot {
-  padding: 8px 20px 12px; color: #6b7385; font-size: 12px;
+.side {
+  border-left: 1px solid #e2e8f0; background: #fcfdff;
+  display: flex; flex-direction: column; min-height: 0;
 }
-@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+.side h2 {
+  margin: 0; font-size: 13px; padding: 14px 14px 8px; color: #334155;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.side .list { flex: 1; overflow: auto; padding: 0 8px 8px; }
+.side .item {
+  font-size: 12px; color: #475569; padding: 6px 8px; border-radius: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.side .item:hover { background: #f1f5f9; }
+.foot {
+  padding: 12px 16px; border-top: 1px solid #e2e8f0; background: #f8fafc;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.foot .meta { font-size: 12px; color: #64748b; }
+.foot .meta strong { color: #0f172a; }
+.note { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.status {
+  padding: 8px 16px; font-size: 12px; color: #475569; background: #fff;
+  border-bottom: 1px solid #f1f5f9; min-height: 34px; display: flex; align-items: center; gap: 8px;
+}
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0;
+}
+.dot.ok { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+.dot.err { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.15); }
+.dot.busy { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+@media (max-width: 760px) {
+  .body { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .stats { display: none; }
+}
 </style>
-<div class="wrap" role="dialog" aria-label="北化课件下载标签版">
-  <header class="top">
-    <div class="brand">
-      <div class="mark">⬇</div>
-      <div><h1>北化课件下载</h1><p>标签版 · ${VERSION}</p></div>
+<div class="scrim" id="scrim"></div>
+<div class="dialog" role="dialog" aria-label="北化课件下载标签版">
+  <header class="top" id="dragBar">
+    <div class="mark">⬇</div>
+    <div class="titles">
+      <h1>北化课件下载 · 标签版</h1>
+      <p class="sub" id="course">正在识别课程…</p>
     </div>
-    <div class="meta">
-      <div class="course" id="course">—</div>
-      <div class="hint" id="hint">正在准备扫描…</div>
-    </div>
+    <div class="stats" id="stats"></div>
     <div class="acts">
-      <button class="primary" id="btnScan" type="button">扫描</button>
+      <button class="primary" id="btnScan" type="button">重新汇总</button>
       <button class="accent" id="btnDl" type="button" disabled>下载所选</button>
       <button class="ghost" id="btnClose" type="button">关闭</button>
     </div>
   </header>
-  <nav class="scopes" id="scopes" aria-label="扫描范围"></nav>
+  <div class="status" id="status"><span class="dot busy"></span><span id="statusText">正在一次性汇总课程资源与全部单元…</span></div>
   <div class="toolbar">
     <div class="types" id="types">
       <button class="type active" data-g="all" type="button">全部</button>
@@ -533,47 +599,72 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
       <button class="type" data-g="other" type="button">其他</button>
     </div>
     <input class="search" id="q" type="search" placeholder="搜索文件名…" />
-    <button class="ghost" id="btnExp" type="button">展开</button>
-    <button class="ghost" id="btnCol" type="button">折叠</button>
-    <button class="ghost" id="btnSelVis" type="button">全选可见</button>
-    <button class="ghost" id="btnClr" type="button">清空选择</button>
+    <button class="soft" id="btnExp" type="button">展开</button>
+    <button class="soft" id="btnCol" type="button">折叠</button>
+    <button class="soft" id="btnSelVis" type="button">全选可见</button>
+    <button class="soft" id="btnClr" type="button">清空</button>
   </div>
-  <div class="main">
-    <section class="panel">
-      <div class="status" id="status">尚未扫描</div>
-      <div class="tree" id="tree" role="tree"></div>
-    </section>
-    <aside class="panel side">
-      <h2>已选文件</h2>
-      <div class="tree" id="selList" style="flex:1"></div>
-      <div class="sel">
-        <div>已选 <strong id="selN">0</strong> 个文件</div>
-        <div class="muted">保存到：浏览器下载目录 / 课程名 / 目录 / 文件名</div>
-        <div class="muted" id="dlNote"></div>
+  <div class="body">
+    <div class="tree" id="tree" role="tree"></div>
+    <aside class="side">
+      <h2>已选 <span id="selN">0</span></h2>
+      <div class="list" id="selList"></div>
+      <div class="foot">
+        <div class="meta">
+          <div>保存到下载目录 / <strong id="saveName">课件</strong> / 目录</div>
+          <div class="note" id="dlNote">勾选后点右上角「下载所选」</div>
+        </div>
       </div>
     </aside>
   </div>
-  <footer class="foot">非学校官方 · 仅用你的登录会话下载已授权课件 · 不上传任何数据 · 关闭面板不中断已触发的下载</footer>
 </div>`;
     document.documentElement.appendChild(host);
     window.__buctTabDl = { host, shadow, close: () => host.remove() };
 
     const $ = (id) => shadow.getElementById(id);
     const els = {
-      course: $('course'), hint: $('hint'), status: $('status'), tree: $('tree'),
-      scopes: $('scopes'), types: $('types'), q: $('q'),
+      course: $('course'), stats: $('stats'), status: $('status'), statusText: $('statusText'),
+      tree: $('tree'), types: $('types'), q: $('q'),
       btnScan: $('btnScan'), btnDl: $('btnDl'), btnClose: $('btnClose'),
       btnExp: $('btnExp'), btnCol: $('btnCol'), btnSelVis: $('btnSelVis'), btnClr: $('btnClr'),
-      selList: $('selList'), selN: $('selN'), dlNote: $('dlNote'),
+      selList: $('selList'), selN: $('selN'), saveName: $('saveName'), dlNote: $('dlNote'),
+      dialog: shadow.querySelector('.dialog'), dragBar: $('dragBar'), scrim: $('scrim'),
     };
 
-    const MODE_LABEL = {
-      directory: '当前目录', tree: '目录树', 'unit-current': '当前单元', 'unit-all': '全部单元',
-    };
+    // 拖拽弹窗
+    (function enableDrag() {
+      let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+      const dialog = els.dialog;
+      function onDown(e) {
+        if (e.target.closest('button, input')) return;
+        dragging = true;
+        dialog.classList.add('dragging');
+        const rect = dialog.getBoundingClientRect();
+        ox = rect.left; oy = rect.top;
+        sx = e.clientX; sy = e.clientY;
+        dialog.style.transform = 'none';
+        dialog.style.left = ox + 'px';
+        dialog.style.top = oy + 'px';
+        e.preventDefault();
+      }
+      function onMove(e) {
+        if (!dragging) return;
+        dialog.style.left = Math.max(8, Math.min(window.innerWidth - 120, ox + e.clientX - sx)) + 'px';
+        dialog.style.top = Math.max(8, Math.min(window.innerHeight - 80, oy + e.clientY - sy)) + 'px';
+      }
+      function onUp() {
+        dragging = false;
+        dialog.classList.remove('dragging');
+      }
+      els.dragBar.addEventListener('mousedown', onDown);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    })();
 
-    function setStatus(t, k) {
-      els.status.textContent = t;
-      els.status.className = 'status' + (k ? ' ' + k : '');
+    function setStatus(text, kind) {
+      els.statusText.textContent = text;
+      const dot = els.status.querySelector('.dot');
+      dot.className = 'dot' + (kind ? ' ' + kind : ' busy');
     }
 
     function matches(f) {
@@ -633,14 +724,14 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
     function updateSel() {
       els.selN.textContent = String(state.selected.size);
       els.btnDl.disabled = state.selected.size === 0 || state.scanning || state.downloading;
+      els.saveName.textContent = state.courseName || '课件';
       els.selList.innerHTML = '';
       for (const id of state.selected) {
         const f = state.files.find((x) => x.id === id);
         if (!f) continue;
         const d = document.createElement('div');
-        d.className = 'row';
-        d.innerHTML = '<span class="label"></span>';
-        d.querySelector('.label').textContent = relPath(f);
+        d.className = 'item';
+        d.textContent = relPath(f);
         els.selList.appendChild(d);
       }
       for (const input of els.tree.querySelectorAll('input[data-id]')) {
@@ -661,20 +752,6 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
       }
     }
 
-    function renderScopes() {
-      els.scopes.innerHTML = '';
-      const modes = state.modes.length ? state.modes : ['directory', 'tree'];
-      for (const mode of modes) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'scope' + (state.mode === mode ? ' active' : '');
-        b.textContent = MODE_LABEL[mode] || mode;
-        b.disabled = state.scanning;
-        b.addEventListener('click', () => doScan(mode));
-        els.scopes.appendChild(b);
-      }
-    }
-
     function iconClass(n) {
       if (n.type === 'folder') return 'folder';
       return n.group || groupOf(n.ext || '');
@@ -684,11 +761,11 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
       return ({ pdf: 'P', ppt: 'S', word: 'W', excel: 'X', archive: 'Z', other: 'F' })[iconClass(n)] || 'F';
     }
 
-    function renderNode(node) {
+    function renderNode(node, isSection) {
       if (!nodeVisible(node)) return null;
       const wrap = document.createElement('div');
       const row = document.createElement('div');
-      row.className = 'row';
+      row.className = 'row' + (isSection ? ' section' : '');
       const isFolder = node.type === 'folder';
       const collapsed = state.collapsed.has(node.id);
 
@@ -744,7 +821,7 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
         const kids = document.createElement('div');
         kids.className = 'kids' + (collapsed ? ' collapsed' : '');
         for (const c of node.children || []) {
-          const el = renderNode(c);
+          const el = renderNode(c, false);
           if (el) kids.appendChild(el);
         }
         wrap.appendChild(kids);
@@ -755,12 +832,22 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
     function renderTree() {
       els.tree.innerHTML = '';
       if (!state.tree) {
-        els.tree.innerHTML = '<div class="empty">点击「扫描」识别当前课程的课件。</div>';
+        els.tree.innerHTML = '<div class="empty"><strong>正在汇总资源…</strong>课程资源目录树与全部单元会一次列出</div>';
         return;
       }
-      const el = renderNode(state.tree);
-      if (el) els.tree.appendChild(el);
+      for (const child of state.tree.children || []) {
+        const el = renderNode(child, true);
+        if (el) els.tree.appendChild(el);
+      }
       updateSel();
+    }
+
+    function renderStats(stats) {
+      if (!stats) { els.stats.innerHTML = ''; return; }
+      els.stats.innerHTML =
+        '<span class="stat">资源 ' + stats.resourceFiles + '</span>' +
+        '<span class="stat">单元 ' + stats.units + '</span>' +
+        '<span class="stat">共 ' + stats.total + ' 个文件</span>';
     }
 
     function expandDepth(node, d) {
@@ -771,47 +858,38 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
 
     function applyResult(result) {
       if (!result || !result.ok) {
-        setStatus((result && result.error) || '扫描失败', 'err');
-        state.tree = null; state.files = []; state.modes = [];
-        renderTree(); renderScopes();
+        setStatus((result && result.error) || '汇总失败', 'err');
         return;
       }
-      state.surface = result.surface;
       state.courseName = result.courseName || '课件';
-      state.modes = result.modes || [];
-      state.mode = result.defaultMode || state.modes[0] || 'tree';
       state.tree = result.tree;
-      state.files = flattenFiles(result.tree);
-      state.unitIndex = result.unitIndex || [];
+      state.files = result.files || flattenFiles(result.tree);
+      state.stats = result.stats;
+      state.failures = result.failures || [];
       state.selected.clear();
       state.collapsed.clear();
       expandDepth(state.tree, 2);
-      els.course.textContent = state.courseName;
-      els.hint.textContent = result.surface === 'resource-directory'
-        ? '课程资源 · 可扫当前目录或完整目录树'
-        : '单元学习 · 可扫当前单元或全部单元';
-      setStatus('发现 ' + state.files.length + ' 个文件。勾选后点「下载所选」。', 'ok');
-      renderScopes();
+      els.course.textContent = state.courseName + ' · 课程资源 + 单元学习已汇总';
+      renderStats(state.stats);
+      let msg = '已汇总 ' + (state.stats ? state.stats.total : state.files.length) + ' 个文件';
+      if (state.failures.length) msg += '，' + state.failures.length + ' 项读取失败';
+      msg += '。勾选后点「下载所选」。';
+      setStatus(msg, state.failures.length ? '' : 'ok');
       renderTree();
     }
 
-    async function doScan(mode) {
+    async function doScan() {
       if (state.scanning) return;
-      if (mode) state.mode = mode;
-      if (state.mode === 'unit-all' && state.unitIndex.length) {
-        const ok = confirm('将读取 ' + state.unitIndex.length + ' 个单元页面并汇总课件。\n只读取页面与文件信息，不会自动下载课件正文。确认扫描？');
-        if (!ok) { setStatus('已取消全部单元扫描'); return; }
-      }
       state.scanning = true;
       els.btnScan.disabled = true;
       els.btnDl.disabled = true;
-      setStatus('正在扫描…');
-      renderScopes();
+      setStatus('正在一次性汇总课程资源与全部单元…', 'busy');
+      renderTree();
       try {
-        const result = await scan(state.mode);
+        const result = await scanAll((t) => setStatus(t, 'busy'));
         applyResult(result);
       } catch (e) {
-        setStatus(e && e.message ? e.message : '扫描失败', 'err');
+        setStatus(e && e.message ? e.message : '汇总失败', 'err');
       }
       state.scanning = false;
       els.btnScan.disabled = false;
@@ -836,16 +914,16 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
       state.downloading = true;
       els.btnDl.disabled = true;
       els.dlNote.textContent = 'Chrome 可能询问是否允许多个下载，请点允许。';
-      setStatus('正在触发 ' + items.length + ' 个下载…', 'ok');
+      setStatus('正在触发 ' + items.length + ' 个下载…', 'busy');
       let done = 0;
       for (const f of items) {
         triggerDownload(f.downloadUrl, (state.courseName || '课件') + '/' + relPath(f));
         done += 1;
-        setStatus('已触发 ' + done + ' / ' + items.length + '：' + f.name, 'ok');
-        await sleep(280);
+        setStatus('已触发 ' + done + ' / ' + items.length + '：' + f.name, 'busy');
+        await sleep(260);
       }
-      setStatus('已触发全部 ' + items.length + ' 个下载。请到浏览器下载列表核对文件。', 'ok');
-      els.dlNote.textContent = '「已触发」不等于「已保存完成」，请看浏览器下载记录。';
+      setStatus('已触发全部 ' + items.length + ' 个下载。请到浏览器下载列表核对。', 'ok');
+      els.dlNote.textContent = '「已触发」≠「已保存完成」';
       state.downloading = false;
       updateSel();
     }
@@ -853,6 +931,7 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
     els.btnScan.addEventListener('click', () => doScan());
     els.btnDl.addEventListener('click', () => doDownload());
     els.btnClose.addEventListener('click', () => host.remove());
+    els.scrim.addEventListener('click', () => host.remove());
     els.btnExp.addEventListener('click', () => { state.collapsed.clear(); renderTree(); });
     els.btnCol.addEventListener('click', () => {
       const walk = (n) => {
@@ -878,8 +957,7 @@ button:hover:not(:disabled) { filter: brightness(0.97); }
       renderTree();
     });
 
-    // 启动：自动扫描
-    renderScopes();
+    renderTree();
     doScan();
   }
 
