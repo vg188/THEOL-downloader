@@ -34,7 +34,7 @@ function loadTransform() {
 const transform = loadTransform();
 
 const stamp = new Date().toISOString().slice(0, 10);
-const version = '2.2.2-tab';
+const version = '2.3.0-tab';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const write = (p, content) => {

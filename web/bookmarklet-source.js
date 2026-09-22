@@ -4,7 +4,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '2.2.0-tab';
+  const VERSION = '2.3.0-tab';
   const HOST_ID = 'buct-tab-dl-host';
 
   if (location.protocol !== 'https:' && location.protocol !== 'http:') {
@@ -1008,13 +1008,143 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       a.remove();
     }
 
-    async function doDownload() {
-      const items = [...state.selected].map(findFile).filter(Boolean);
-      if (!items.length) return;
-      state.downloading = true;
-      els.btnDl.disabled = true;
+    function saveBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+
+    /* —— ZIP（store，无压缩）——
+     * 标准：优先打成一个 ZIP；文件数过多、已知体积超限，或打包中超过字节预算时退回批量。
+     */
+    const ZIP_MAX_BYTES = 200 * 1024 * 1024;
+    const ZIP_MAX_FILES = 120;
+
+    function crc32(buf) {
+      let c = -1;
+      for (let i = 0; i < buf.length; i++) {
+        c ^= buf[i];
+        for (let k = 0; k < 8; k++) c = (c >>> 1) ^ ((c & 1) ? 0xEDB88320 : 0);
+      }
+      return (c ^ -1) >>> 0;
+    }
+
+    function zipStore(files) {
+      // files: [{ name, data: Uint8Array }]
+      const enc = new TextEncoder();
+      const chunks = [];
+      const central = [];
+      let offset = 0;
+      for (const f of files) {
+        const nameBytes = enc.encode(f.name);
+        const crc = crc32(f.data);
+        const size = f.data.length;
+        const local = new Uint8Array(30 + nameBytes.length);
+        const dv = new DataView(local.buffer);
+        dv.setUint32(0, 0x04034b50, true);
+        dv.setUint16(4, 20, true);
+        dv.setUint16(6, 0x0800, true); // UTF-8
+        dv.setUint16(8, 0, true); // store
+        dv.setUint16(10, 0, true);
+        dv.setUint16(12, 0x21, true); // fixed date ~1980+
+        dv.setUint32(14, crc, true);
+        dv.setUint32(18, size, true);
+        dv.setUint32(22, size, true);
+        dv.setUint16(26, nameBytes.length, true);
+        dv.setUint16(28, 0, true);
+        local.set(nameBytes, 30);
+        chunks.push(local, f.data);
+
+        const cen = new Uint8Array(46 + nameBytes.length);
+        const cv = new DataView(cen.buffer);
+        cv.setUint32(0, 0x02014b50, true);
+        cv.setUint16(4, 20, true);
+        cv.setUint16(6, 20, true);
+        cv.setUint16(8, 0x0800, true);
+        cv.setUint16(10, 0, true);
+        cv.setUint16(12, 0, true);
+        cv.setUint16(14, 0x21, true);
+        cv.setUint32(16, crc, true);
+        cv.setUint32(20, size, true);
+        cv.setUint32(24, size, true);
+        cv.setUint16(28, nameBytes.length, true);
+        cv.setUint32(42, offset, true);
+        cen.set(nameBytes, 46);
+        central.push(cen);
+        offset += local.length + size;
+      }
+      const cenSize = central.reduce((s, c) => s + c.length, 0);
+      const end = new Uint8Array(22);
+      const ev = new DataView(end.buffer);
+      ev.setUint32(0, 0x06054b50, true);
+      ev.setUint16(8, files.length, true);
+      ev.setUint16(10, files.length, true);
+      ev.setUint32(12, cenSize, true);
+      ev.setUint32(16, offset, true);
+      return new Blob([...chunks, ...central, end], { type: 'application/zip' });
+    }
+
+    function decideDownloadMode(items) {
+      if (items.length > ZIP_MAX_FILES) {
+        return { mode: 'batch', reason: '已选 ' + items.length + ' 个，超过 ' + ZIP_MAX_FILES + '，改用批量下载' };
+      }
+      const known = items.reduce((s, f) => s + (Number(f.sizeBytes) || 0), 0);
+      const unknown = items.filter((f) => !Number(f.sizeBytes)).length;
+      if (known > ZIP_MAX_BYTES) {
+        return { mode: 'batch', reason: '已知体积过大，改用批量下载' };
+      }
+      if (unknown > 60) {
+        return { mode: 'batch', reason: '大小未知文件过多，改用批量下载' };
+      }
+      if (unknown > 0) {
+        return { mode: 'zip', reason: '打包 ZIP（含 ' + unknown + ' 个大小未知文件，超 ' + Math.round(ZIP_MAX_BYTES / 1048576) + ' MB 自动改批量）' };
+      }
+      return { mode: 'zip', reason: '打包 ZIP（约 ' + (known ? (known / 1048576).toFixed(1) + ' MB' : '未知大小') + '）' };
+    }
+
+    async function downloadAsZip(items) {
+      const packed = [];
+      let total = 0;
+      let done = 0;
+      for (const f of items) {
+        done += 1;
+        setStatus('打包中 ' + done + ' / ' + items.length + '：' + f.name, 'busy');
+        const section = f.section === 'unit' ? '单元学习' : '课程资源';
+        const name = (state.courseName || '课件') + '/' + section + '/' + relPath(f);
+        let data;
+        try {
+          const res = await fetch(f.downloadUrl, { credentials: 'include' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const ctype = (res.headers.get('content-type') || '').toLowerCase();
+          if (ctype.includes('text/html') || ctype.includes('application/json')) {
+            throw new Error('服务器返回了网页而不是文件（可能登录失效）');
+          }
+          data = new Uint8Array(await res.arrayBuffer());
+        } catch (e) {
+          throw Object.assign(new Error(f.name + '：' + (e && e.message ? e.message : e)), { failedFile: f });
+        }
+        total += data.length;
+        if (total > ZIP_MAX_BYTES) {
+          throw Object.assign(new Error('打包体积超过 ' + Math.round(ZIP_MAX_BYTES / 1048576) + ' MB'), { overBudget: true });
+        }
+        packed.push({ name: name.replace(/\\/g, '/'), data });
+      }
+      setStatus('正在生成 ZIP…', 'busy');
+      const blob = zipStore(packed);
+      const zipName = (state.courseName || '课件') + '_' + items.length + '个文件.zip';
+      saveBlob(blob, zipName);
+      setStatus('已打包下载：' + zipName + '（' + items.length + ' 个文件）', 'ok');
+    }
+
+    async function downloadAsBatch(items) {
       els.dlNote.textContent = 'Chrome 可能询问是否允许多个下载，请点允许。';
-      setStatus('正在触发 ' + items.length + ' 个下载…', 'busy');
+      setStatus('批量下载 ' + items.length + ' 个文件…', 'busy');
       let done = 0;
       for (const f of items) {
         const section = f.section === 'unit' ? '单元学习' : '课程资源';
@@ -1024,7 +1154,49 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
         await sleep(260);
       }
       setStatus('已触发全部 ' + items.length + ' 个下载。请到浏览器下载列表核对。', 'ok');
-      els.dlNote.textContent = '路径含「课程资源 / 单元学习」分组';
+      els.dlNote.textContent = '批量下载 · 路径含「课程资源 / 单元学习」';
+    }
+
+    async function doDownload() {
+      const items = [...state.selected].map(findFile).filter(Boolean);
+      if (!items.length) return;
+      state.downloading = true;
+      els.btnDl.disabled = true;
+
+      const plan = decideDownloadMode(items);
+      els.dlNote.textContent = plan.reason;
+      setStatus(plan.mode === 'zip' ? '准备打包下载…' : '准备批量下载…', 'busy');
+
+      try {
+        if (plan.mode === 'zip') {
+          try {
+            await downloadAsZip(items);
+          } catch (e) {
+            if (e && e.overBudget) {
+              const ok = confirm(e.message + '\n是否改为逐个批量下载？');
+              if (ok) await downloadAsBatch(items);
+              else setStatus('已取消。可减少勾选后再打包。', 'err');
+            } else if (e && e.failedFile) {
+              const ok = confirm(e.message + '\n是否跳过失败项，继续打包其余文件？');
+              if (ok) {
+                const rest = items.filter((x) => x.id !== e.failedFile.id);
+                if (rest.length) await downloadAsZip(rest);
+                else setStatus('没有可打包的文件', 'err');
+              } else {
+                setStatus('已取消打包', 'err');
+              }
+            } else {
+              setStatus(e && e.message ? e.message : '打包失败，改为批量下载', 'err');
+              await downloadAsBatch(items);
+            }
+          }
+        } else {
+          await downloadAsBatch(items);
+        }
+      } catch (e) {
+        setStatus(e && e.message ? e.message : '下载失败', 'err');
+      }
+
       state.downloading = false;
       updateSel();
     }
