@@ -44,6 +44,6 @@
   install.addEventListener('click', function (e) {
     // 在官网点击时只提示安装方式，不执行书签
     e.preventDefault();
-    ok('请把按钮拖到书签栏（或右键复制链接地址后手动建书签），再到 THEOL 课程页点击使用');
+    ok('请把「课程资源助手」拖到书签栏，再到 THEOL 课程页点击使用');
   });
 })();

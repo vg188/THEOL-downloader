@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "北化课件下载 · 标签版",
+  "version": "2.0.0",
+  "description": "在 THEOL 教学平台打开完整标签页面板：扫描课程资源目录树/单元学习，树状勾选后批量下载 PDF、PPT、Word 等课件。",
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["downloads", "storage", "scripting", "tabs", "activeTab"],
+  "host_permissions": [
+    "https://course.buct.edu.cn/*",
+    "http://course.buct.edu.cn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开课件下载面板",
+    "default_icon": {
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://course.buct.edu.cn/*",
+        "http://course.buct.edu.cn/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

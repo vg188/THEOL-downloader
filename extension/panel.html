@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>北化课件下载 · 标签版</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">⬇</span>
+        <div>
+          <h1>北化课件下载</h1>
+          <p class="subtitle">标签版 · 树状勾选批量下载</p>
+        </div>
+      </div>
+      <div class="course-meta">
+        <div id="courseName" class="course-name">—</div>
+        <div id="pageHint" class="page-hint">请先打开学校教学平台课程页</div>
+      </div>
+      <div class="top-actions">
+        <button id="btnRescan" class="btn primary" type="button">扫描</button>
+        <button id="btnDownload" class="btn accent" type="button" disabled>下载所选</button>
+      </div>
+    </header>
+
+    <nav class="scope-tabs" id="scopeTabs" aria-label="扫描范围">
+      <button class="scope-tab" data-mode="directory" type="button">当前目录</button>
+      <button class="scope-tab" data-mode="tree" type="button">目录树</button>
+      <button class="scope-tab" data-mode="unit-current" type="button">当前单元</button>
+      <button class="scope-tab" data-mode="unit-all" type="button">全部单元</button>
+    </nav>
+
+    <div class="toolbar">
+      <nav class="type-tabs" id="typeTabs" aria-label="类型筛选">
+        <button class="type-tab active" data-group="all" type="button">全部</button>
+        <button class="type-tab" data-group="pdf" type="button">PDF</button>
+        <button class="type-tab" data-group="ppt" type="button">PPT</button>
+        <button class="type-tab" data-group="word" type="button">Word</button>
+        <button class="type-tab" data-group="excel" type="button">Excel</button>
+        <button class="type-tab" data-group="archive" type="button">压缩包</button>
+        <button class="type-tab" data-group="other" type="button">其他</button>
+      </nav>
+      <input id="searchInput" class="search" type="search" placeholder="搜索文件名…" autocomplete="off" />
+      <div class="tree-actions">
+        <button id="btnExpand" class="btn ghost" type="button">展开</button>
+        <button id="btnCollapse" class="btn ghost" type="button">折叠</button>
+        <button id="btnSelectVisible" class="btn ghost" type="button">全选可见</button>
+        <button id="btnClearSel" class="btn ghost" type="button">清空选择</button>
+      </div>
+    </div>
+
+    <main class="main">
+      <section class="tree-panel">
+        <div id="statusBar" class="status-bar">尚未扫描</div>
+        <div id="treeRoot" class="tree-root" role="tree" aria-label="课件列表"></div>
+        <div id="emptyState" class="empty">
+          <p>点击右上角「扫描」识别当前课程的课件。</p>
+          <p class="empty-sub">支持「课程资源」目录树和「单元学习」。课程资源里的根目录文件也会列出。</p>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section class="jobs-panel">
+          <div class="jobs-head">
+            <h2>下载记录</h2>
+            <button id="btnClearJobs" class="btn ghost sm" type="button">清除完成</button>
+          </div>
+          <div id="jobsList" class="jobs-list"></div>
+        </section>
+        <section class="selection-panel">
+          <div class="sel-line">
+            <span>已选 <strong id="selCount">0</strong> 个文件</span>
+            <span id="selHidden" class="muted"></span>
+          </div>
+          <div class="sel-line muted">
+            保存到：下载目录 / <span id="saveFolder">课件</span> / 目录 / 文件名
+          </div>
+          <ul id="selPreview" class="sel-preview"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <span>非学校官方扩展 · 仅使用你的登录会话下载已授权课件 · 不上传任何数据</span>
+    </footer>
+  </div>
+  <script src="panel.js"></script>
+</body>
+</html>
