@@ -1,7 +1,15 @@
-/* 标签版官网构建：书签用 Base64 自包含，href 直接写进 HTML，避免拖拽丢 javascript: */
+/* 标签版官网构建
+ * 书签格式对齐可用旧版：esbuild 压成 IIFE，href = javascript: + 源码（不用 eval/atob）。
+ * HTML 属性转义后直接写入按钮 href，拖拽即得完整 javascript: URL。
+ */
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+// 复用 File-scri 里已有的 esbuild
+const { transform } = require('E:/codex/File-scri/node_modules/esbuild/lib/main.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -10,7 +18,7 @@ const distDir = path.join(root, 'dist', 'site');
 const previewDir = root;
 
 const stamp = new Date().toISOString().slice(0, 10);
-const version = '2.2.1-tab';
+const version = '2.2.2-tab';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const write = (p, content) => {
@@ -18,15 +26,32 @@ const write = (p, content) => {
   fs.writeFileSync(p, content);
 };
 
+/** 与旧版一致的 HTML 属性转义 */
+function escapeAttribute(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
 let src = read(path.join(webDir, 'bookmarklet-source.js'));
-// 只去掉块注释，不压空白（避免弄坏模板字符串/正则）
-src = src.replace(/\/\*[\s\S]*?\*\//g, '');
-src = src.trim();
-const payloadBytes = Buffer.byteLength(src, 'utf8');
-const b64 = Buffer.from(src, 'utf8').toString('base64');
-// 书签本体：decode Base64 → UTF-8 → eval。比 encodeURIComponent 更小、对中文更稳。
-const bookmarklet =
-  'javascript:eval(new TextDecoder().decode(Uint8Array.from(atob("' + b64 + '"),function(c){return c.charCodeAt(0)})))';
+src = src.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+
+// esbuild 压成可直接放在 javascript: 后的 IIFE（chrome120 + utf8，对齐旧版）
+const minified = await transform(src, {
+  minify: true,
+  target: 'chrome120',
+  charset: 'utf8',
+  format: 'iife',
+  logLevel: 'silent',
+});
+let bundle = minified.code.trim();
+// 去掉可能的尾部分号，保持旧版风格
+bundle = bundle.replace(/;+\s*$/, '');
+
+// 关键：javascript: + 内联 IIFE，禁止 eval/atob 包装
+const bookmarklet = 'javascript:' + bundle;
 
 const stampLine = `v${version} (${stamp})`;
 const inject = `<script>window.__BOOKMARKLET__=${JSON.stringify({
@@ -35,15 +60,14 @@ const inject = `<script>window.__BOOKMARKLET__=${JSON.stringify({
 })};</script>`;
 
 let index = read(path.join(webDir, 'index.html'));
-// 构建时直接写入完整 href，拖拽不依赖 JS
 index = index.replace(
   'href="#" draggable="true"',
-  'href="' + bookmarklet.replace(/"/g, '&quot;') + '" draggable="true"'
+  'href="' + escapeAttribute(bookmarklet) + '" draggable="true"'
 );
 index = index.replace('</head>', inject + '\n</head>');
 
 const files = {
-  'bookmarklet.js': src,
+  'bookmarklet.js': bundle,
   'bookmarklet.txt': bookmarklet,
   'site.css': read(path.join(webDir, 'site.css')),
   'privacy.html': read(path.join(webDir, 'privacy.html')),
@@ -56,22 +80,22 @@ for (const [name, content] of Object.entries(files)) {
   write(path.join(previewDir, name), content);
 }
 
+const rawBytes = Buffer.byteLength(bundle, 'utf8');
 console.log('site built:', distDir);
-console.log('preview root:', previewDir);
 console.log('bookmarklet stamp:', stampLine);
-console.log('source bytes:', payloadBytes);
-console.log('base64 chars:', b64.length);
-console.log('bookmarklet href chars:', bookmarklet.length);
-if (b64.length > 400 * 1024) {
-  console.error('bookmarklet too large');
+console.log('bundle bytes:', rawBytes);
+console.log('href prefix:', bookmarklet.slice(0, 40));
+console.log('href chars:', bookmarklet.length);
+if (/eval\s*\(|atob\s*\(/.test(bundle.slice(0, 80))) {
+  console.error('bookmarklet must not start with eval/atob wrapper');
   process.exit(1);
 }
-
-// 烟测：decode 后必须是可解析的 JS
+if (!bookmarklet.startsWith('javascript:')) {
+  console.error('bookmarklet must start with javascript:');
+  process.exit(1);
+}
 try {
-  const decoded = Buffer.from(b64, 'base64').toString('utf8');
-  if (!decoded.includes('mountUI')) throw new Error('decode mismatch');
-  new Function(decoded); // 仅语法检查，不执行
+  new Function(bundle);
   console.log('syntax check: ok');
 } catch (e) {
   console.error('syntax check failed:', e.message);
