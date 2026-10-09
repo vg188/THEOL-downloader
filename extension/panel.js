@@ -3,10 +3,11 @@ import { isDownloadable, availabilityCounts, trimWhitespace, schoolUrl, previewS
 /* 北化课件下载 · 标签版 — panel controller */
 
 const MODE_LABEL = {
+  course: '全部课程',
   directory: '当前目录',
-  tree: '目录树',
+  tree: '课程资源',
   'unit-current': '当前单元',
-  'unit-all': '全部单元',
+  'unit-all': '单元学习',
 };
 
 const GROUP_LABEL = {
@@ -24,7 +25,8 @@ const state = {
   courseName: '课件',
   surface: null,
   modes: [],
-  mode: 'auto',
+  mode: 'course',
+  courseTree: null,
   tree: null,
   files: [],
   unitIndex: [],
@@ -175,13 +177,11 @@ function relPath(file) {
 
 function updateSelectionChrome() {
   for (const id of state.selected) if (!state.files.some(file => file.id === id && isDownloadable(file))) state.selected.delete(id);
-  const all = state.files.map(fileFromNode).filter(matchesFilter);
-  const selectedFiles = all.filter((f) => state.selected.has(f.id));
-  const hiddenSelected = state.files.filter((f) => state.selected.has(f.id) && !matchesFilter(fileFromNode(f))).length;
+  const visible = new Set(collectVisibleFiles(state.tree).map(file => file.id));
+  const hiddenSelected = [...state.selected].filter(id => !visible.has(id)).length;
 
   el.selCount.textContent = String(state.selected.size);
-  const previewSelected = state.files.filter(f => state.selected.has(f.id) && f.downloadKind === 'preview').length;
-  el.selHidden.textContent = [previewSelected ? '含 ' + previewSelected + ' 个预览副本' : '', hiddenSelected ? '另有 ' + hiddenSelected + ' 个不在当前筛选中' : ''].filter(Boolean).join('；');
+  el.selHidden.textContent = hiddenSelected ? '另有 ' + hiddenSelected + ' 个不在当前范围或筛选中' : '';
   el.btnDownload.disabled = state.selected.size === 0 || state.scanning || state.submitting;
   el.saveFolder.textContent = state.courseName || '课件';
 
@@ -256,6 +256,7 @@ function renderScopeTabs() {
   for (const btn of buttons) {
     const mode = btn.dataset.mode;
     const enabled = modes.includes(mode);
+    btn.hidden = !enabled;
     btn.disabled = !enabled || state.scanning || state.submitting;
     btn.classList.toggle('active', state.mode === mode);
     if (!modes.length) btn.disabled = true;
@@ -338,7 +339,7 @@ function renderTreeNode(node, depth = 0) {
   } else {
     const ext = document.createElement('span');
     ext.className = 'tree-ext';
-    ext.textContent = node.downloadKind === 'preview' ? '预览版 ' + node.ext.toUpperCase() : (node.ext || '').toUpperCase();
+    ext.textContent = (node.ext || '').toUpperCase();
     if (node.downloadKind === 'preview') ext.classList.add('preview-type');
     row.appendChild(ext);
   }
@@ -384,10 +385,11 @@ function renderTree() {
   else {
     const message = document.createElement('p');
     message.textContent = state.scanning ? '正在读取课程文件信息…'
-      : !state.tree ? '点击「扫描」读取当前课程；失败后可重试。'
-      : state.mode === 'directory' && state.tree.subfolderCount ? '当前目录没有直接文件，但有 ' + state.tree.subfolderCount + ' 个子目录。切换「目录树」可汇总子目录中的资源。'
+      : !state.tree ? '点击「刷新列表」读取当前课程；失败后可重试。'
+      : state.mode === 'directory' && state.tree.subfolderCount ? '当前目录没有直接文件，但有 ' + state.tree.subfolderCount + ' 个子目录。切换「课程资源」可汇总子目录中的资源。'
+      : !flattenFiles(state.tree).length ? state.tree.emptyReason || '当前范围没有文件，切换范围即可查看其他课程资源。'
       : state.files.length ? '当前筛选下没有文件，可切换类型或清空搜索。'
-      : '当前范围没有识别到文件，可在平台切换目录或单元后重新扫描。';
+      : '当前范围没有识别到文件；可稍后刷新列表。';
     el.emptyState.replaceChildren(message);
   }
   updateSelectionChrome();
@@ -477,6 +479,7 @@ async function refreshJobs() {
 function applyScanResult(result) {
   if (!result?.ok) {
     setStatus(result?.error || '扫描失败', 'error');
+    state.courseTree = null;
     state.tree = null;
     state.files = [];
     state.selected.clear();
@@ -494,8 +497,10 @@ function applyScanResult(result) {
   state.courseName = result.courseName || '课件';
   state.modes = result.modes || [];
   state.mode = result.defaultMode || state.modes[0] || 'auto';
+  state.courseTree = result.surface === 'course' ? result.tree : null;
   state.tree = result.tree;
-  state.files = flattenFiles(result.tree).map(fileFromNode);
+  const seen = new Set();
+  state.files = flattenFiles(result.tree).filter(file => { if (seen.has(file.id)) return false; seen.add(file.id); return true; }).map(fileFromNode);
   state.unitIndex = result.unitIndex || [];
   state.failures = result.failures || [];
   state.selected.clear();
@@ -505,13 +510,15 @@ function applyScanResult(result) {
 
   el.courseName.textContent = state.courseName;
   el.pageHint.textContent =
-    result.surface === 'resource-directory'
+    result.surface === 'course'
+      ? '已汇总整门课程 · 切换目录或单元不会影响此列表'
+      : result.surface === 'resource-directory'
       ? '课程资源 · 可扫描当前目录或完整目录树'
       : '单元学习 · 可扫描当前单元或全部单元';
 
   const counts = availabilityCounts(state.files);
   const unavailableCount = counts.previewOnly + counts.unverified;
-  const unavailableText = (counts.previewDownloads ? '，可下载预览副本 ' + counts.previewDownloads + ' 个' : '') + (counts.previewOnly ? '，' + counts.previewOnly + ' 个暂不支持保存' : '') + (counts.unverified ? '，' + counts.unverified + ' 个无法读取' : '');
+  const unavailableText = (counts.previewOnly ? '，' + counts.previewOnly + ' 个暂不支持保存' : '') + (counts.unverified ? '，' + counts.unverified + ' 个无法读取' : '');
   const failText = state.failures.length
     ? `，${state.failures.length} 项读取失败`
     : '';
@@ -533,25 +540,30 @@ function expandDepth(node, depth) {
   for (const c of node.children || []) expandDepth(c, depth - 1);
 }
 
-async function doScan(mode) {
+function selectScope(mode) {
   if (state.scanning || state.submitting) return;
-  const requestedMode = mode || state.mode;
-  if (requestedMode === 'unit-all') {
-    if (!state.unitIndex.length) { setStatus('请先扫描当前单元以确认全部单元范围', 'error'); return; }
-    if (!window.confirm('将读取 ' + state.unitIndex.length + ' 个单元页面并汇总课件，不会自动下载文件。确认扫描？')) return;
-  }
+  if (!state.courseTree) { void doScan(mode); return; }
+  const selectedTree = mode === 'course' ? state.courseTree : state.courseTree.children.find(node => node.id === (mode === 'tree' ? 'section-resource' : 'section-unit'));
+  if (!state.modes.includes(mode) || !selectedTree) return;
+  state.mode = mode; state.tree = selectedTree;
+  renderScopeTabs(); renderTree();
+}
+
+async function doScan(mode, { reuse = false } = {}) {
+  if (state.scanning || state.submitting) return;
+  const requestedMode = mode || (state.courseTree ? 'course' : state.mode);
   const version = ++state.scanVersion;
   state.scanning = true;
   state.scanId = null;
   state.selected.clear();
-  state.tree = null; state.files = [];
+  state.courseTree = null; state.tree = null; state.files = [];
   el.btnRescan.disabled = true;
   renderTree(); renderScopeTabs();
   setStatus('正在扫描…');
   try {
     const tab = (await send('GET_COURSE_TAB')).tab;
     state.courseTabId = tab.id;
-    const result = await send('SCAN_TAB', { tabId: tab.id, mode: requestedMode });
+    const result = await send('SCAN_TAB', { tabId: tab.id, mode: requestedMode, reuse });
     if (version === state.scanVersion) applyScanResult(result);
   } catch (error) {
     if (version === state.scanVersion) applyScanResult({ ok: false, error: error.message });
@@ -559,7 +571,7 @@ async function doScan(mode) {
     state.scanning = false;
     el.btnRescan.disabled = false;
     renderScopeTabs(); renderTree();
-    if (state.pendingRescan) { state.pendingRescan = false; void doScan('auto'); }
+    if (state.pendingRescan) { state.pendingRescan = false; void doScan('course', { reuse: true }); }
   }
 }
 
@@ -585,7 +597,7 @@ async function doDownload() {
     state.submitting = false;
     el.btnRescan.disabled = false;
     updateSelectionChrome(); renderScopeTabs();
-    if (state.pendingRescan) { state.pendingRescan = false; void doScan('auto'); }
+    if (state.pendingRescan) { state.pendingRescan = false; void doScan('course', { reuse: true }); }
   }
 }
 
@@ -628,7 +640,7 @@ async function init() {
   el.scopeTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('.scope-tab');
     if (!btn || btn.disabled) return;
-    doScan(btn.dataset.mode);
+    selectScope(btn.dataset.mode);
   });
 
   el.typeTabs.addEventListener('click', (e) => {
@@ -653,7 +665,7 @@ async function init() {
     state.scanVersion++;
     state.scanId = null; state.selected.clear();
     if (state.scanning || state.submitting) state.pendingRescan = true;
-    else void doScan('auto');
+    else void doScan('course', { reuse: true });
   });
 
   // 自动定位课程标签页并尝试扫描
@@ -661,9 +673,9 @@ async function init() {
   if (tabRes?.ok && tabRes.tab) {
     state.courseTabId = tabRes.tab.id;
     el.pageHint.textContent = '已连接课程页：' + (tabRes.tab.title || tabRes.tab.url);
-    await doScan();
+    await doScan('course', { reuse: true });
   } else {
-    setStatus('请先在其他标签页打开 course.buct.edu.cn 的课程资源或单元学习，然后点击「扫描」', 'error');
+    setStatus('请先在其他标签页打开 course.buct.edu.cn 的课程资源或单元学习，然后点击「刷新列表」', 'error');
     el.pageHint.textContent = '未找到学校课程标签页';
   }
 }

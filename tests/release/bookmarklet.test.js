@@ -83,13 +83,14 @@ test('rescan and settings are frozen while a download is in flight, and stop nev
   assert.equal(h.clicks.length, 0);
 });
 
-test('declining the all-unit confirmation does not fetch other unit pages', async t => {
+test('a course summary reads all discovered units without another scope confirmation', async t => {
   const entry = 'https://course.buct.edu.cn/meol/jpk/course/course_column_preview_transfer.jsp?tagbug=client&columnId=501&courseId=42';
   let confirmations = 0;
   const h = await bookmarkletHarness(t, { html: listHTML() + '<ul><li><a href="' + entry + '">第一单元</a></li></ul>', confirm: () => { confirmations++; return false; } });
   await waitFor(() => !h.panel.getElementById('btnScan').disabled);
-  assert.equal(confirmations, 1);
-  assert.equal(h.requests.some(request => request.url.includes('course_column_preview_transfer')), false);
+  assert.equal(confirmations, 0);
+  assert.equal(h.requests.some(request => request.url.includes('course_column_preview_transfer')), true);
+  assert.equal(h.requests.some(request => request.url.includes('/download.jsp')), false);
   assert.equal(h.panel.getElementById('cntRes').textContent, '1');
 });
 

@@ -69,7 +69,9 @@ test('Chrome preview downloads prefer complete PDF, preserve local generated fil
     await panel.waitForFunction(()=>document.querySelectorAll('input[data-kind="file"]').length===8&&!document.querySelector('#btnRescan').disabled);
     assert.equal(requests.some(r=>r.url.includes('/data/convert/')||r.url.includes('/dest/')||r.url.includes('/resPdfShow.do')),false,'scanning never downloads preview bodies');
     assert.equal(await panel.locator('input[data-kind="file"]:disabled').count(),0);
-    await panel.locator('#btnSelectVisible').click();await panel.locator('#btnDownload').click();
+    await panel.locator('#btnSelectVisible').click();
+    await course.evaluate(() => { document.querySelector('table').replaceChildren(); history.replaceState(null, '', location.pathname + '?lid=42&folderid=99#browse'); });
+    await panel.locator('#btnDownload').click();
     await jobsUntil(panel,jobs=>jobs.some(j=>j.file.fileid==='2'&&j.status==='preparing'));
     await panel.close();
     const targets=await cdp.send('Target.getTargets');const worker=targets.targetInfos.find(t=>t.type==='service_worker'&&t.url.startsWith('chrome-extension://'+id+'/'));
@@ -83,7 +85,7 @@ test('Chrome preview downloads prefer complete PDF, preserve local generated fil
       assert.equal(job.status,'done',JSON.stringify(job));const target=await realpath(job.actualFilename),base=await realpath(downloads),rel=relative(base,target);assert.ok(rel&&!rel.startsWith('..')&&!isAbsolute(rel));
       const bytes=await readFile(target);assert.equal(bytes.length,job.fileSize);
       if(job.file.fileid==='7'){assert.doesNotMatch(job.actualFilename,/预览版/);assert.ok(job.nativeUrl.startsWith('blob:chrome-extension://'));assert.equal(job.preflight.sampleComplete,true);assert.equal(hash(bytes),hash(fixtureBytes('sample.pptx')));continue;}
-      assert.match(job.actualFilename,/预览版/);
+      assert.doesNotMatch(job.actualFilename,/预览版/);
       if(job.file.fileid==='1')assert.equal(hash(bytes),hash(fixtureBytes('sample.pdf')));
       else if(job.file.fileid==='2'){const doc=await PDFDocument.load(bytes);assert.equal(doc.getPageCount(),2);assert.deepEqual(doc.getPages().map(p=>p.getSize()),[{width:30,height:22.5},{width:22.5,height:30}]);}
       else if(job.file.fileid==='3')assert.equal(hash(bytes),hash(mediaBytes()));
@@ -101,7 +103,7 @@ test('Chrome preview downloads prefer complete PDF, preserve local generated fil
     await course.locator('#buct-tab-dl-host input[data-kind="file"][data-id="42:101:1"]').check();
     await course.locator('#buct-tab-dl-host input[data-kind="file"][data-id="42:107:7"]').check();
     const zipEvent=course.waitForEvent('download');await course.locator('#buct-tab-dl-host #btnDl').click();const download=await zipEvent;const archive=join(artifacts,'whole-platform-pdf.zip');await download.saveAs(archive);
-    const entries=unzipSync(await readFile(archive));assert.deepEqual(Object.keys(entries),['课程资源/Whole PDF（预览版）.pdf','课程资源/Original Stream.pptx']);assert.equal(hash(entries['课程资源/Whole PDF（预览版）.pdf']),hash(fixtureBytes('sample.pdf')));assert.equal(hash(entries['课程资源/Original Stream.pptx']),hash(fixtureBytes('sample.pptx')));
+    const entries=unzipSync(await readFile(archive));assert.deepEqual(Object.keys(entries),['课程资源/Whole PDF.pdf','课程资源/Original Stream.pptx']);assert.equal(hash(entries['课程资源/Whole PDF.pdf']),hash(fixtureBytes('sample.pdf')));assert.equal(hash(entries['课程资源/Original Stream.pptx']),hash(fixtureBytes('sample.pptx')));
     assert.equal(requests.some(r=>r.url.includes('must-not-fetch')),false);
     await course.screenshot({path:join(artifacts,'preview-bookmarklet.png'),fullPage:true});await course.setViewportSize({width:390,height:900});assert.ok(await course.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await course.screenshot({path:join(artifacts,'preview-bookmarklet-390.png'),fullPage:true});
     assert.deepEqual(errors,[]);await writeFile(join(artifacts,'preview-report.json'),JSON.stringify({chrome:context.browser().version(),wholePdfSha256:hash(fixtureBytes('sample.pdf')),originalStreamSha256:hash(fixtureBytes('sample.pptx')),wrongOfficeStreamRefused:true,imageFallbackPages:2,panelAndWorkerClosureRecovered:true,missingPageRefused:true,jobs:jobs.map(j=>({name:j.name,status:j.status,bytes:j.fileSize,code:j.errorCode}))},null,2));

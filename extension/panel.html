@@ -21,16 +21,17 @@
         <div id="pageHint" class="page-hint">请先打开学校教学平台课程页</div>
       </div>
       <div class="top-actions">
-        <button id="btnRescan" class="btn primary" type="button">扫描</button>
+        <button id="btnRescan" class="btn primary" type="button">刷新列表</button>
         <button id="btnDownload" class="btn accent" type="button" disabled>下载所选</button>
       </div>
     </header>
 
-    <nav class="scope-tabs" id="scopeTabs" aria-label="扫描范围">
+    <nav class="scope-tabs" id="scopeTabs" aria-label="查看范围">
+      <button class="scope-tab" data-mode="course" type="button">全部课程</button>
       <button class="scope-tab" data-mode="directory" type="button">当前目录</button>
-      <button class="scope-tab" data-mode="tree" type="button">目录树</button>
+      <button class="scope-tab" data-mode="tree" type="button">课程资源</button>
       <button class="scope-tab" data-mode="unit-current" type="button">当前单元</button>
-      <button class="scope-tab" data-mode="unit-all" type="button">全部单元</button>
+      <button class="scope-tab" data-mode="unit-all" type="button">单元学习</button>
     </nav>
 
     <div class="toolbar">
@@ -57,7 +58,7 @@
         <div id="statusBar" class="status-bar" role="status" aria-live="polite">尚未扫描</div>
         <div id="treeRoot" class="tree-root" role="tree" aria-label="课件列表"></div>
         <div id="emptyState" class="empty">
-          <p>点击右上角「扫描」识别当前课程的课件。</p>
+          <p>打开后自动汇总整门课程；需要更新时点击「刷新列表」。</p>
           <p class="empty-sub">支持「课程资源」目录树和「单元学习」。课程资源里的根目录文件也会列出。</p>
         </div>
       </section>

@@ -36,7 +36,7 @@ async function cleanupProfile(profile) {
   assert.ok(rel && !rel.startsWith('..') && !isAbsolute(rel), 'profile must stay in the named artifact directory');
   await rm(target, { recursive: true, force: true });
 }
-test('current Chrome release: frame scanning, stale-selection refusal, real bookmark URL and ZIP download', { timeout: 90000 }, async () => {
+test('current Chrome release: course-scoped caching, navigation-safe selection, real bookmark URL and ZIP download', { timeout: 90000 }, async () => {
   assert.ok(chrome, 'Install Chrome or set CHROME_PATH');
   await mkdir(artifacts, { recursive: true });
   const extension = await buildReleaseExtension();
@@ -56,16 +56,31 @@ test('current Chrome release: frame scanning, stale-selection refusal, real book
     await course.frameLocator('#course-list').locator('table.valuelist').waitFor();
     const panel = await context.newPage(); panel.on('pageerror', error => errors.push(error.message));
     await panel.goto('chrome-extension://' + id + '/panel.html');
-    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('发现 1 个文件'));
-    await panel.locator('input[data-kind="file"]').check();
-    await course.frameLocator('#course-list').locator('table').evaluate((table, preview) => { const row = table.insertRow(); const cell = row.insertCell(); const a = document.createElement('a'); a.href = preview; a.textContent = 'added.pdf'; cell.appendChild(a); }, file(4).previewUrl);
+    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('发现 3 个文件'));
+    const initialScan = await panel.evaluate(async () => (await chrome.storage.session.get('courseResourceScanV2')).courseResourceScanV2.id);
+    await panel.locator('input[data-kind="file"][data-id="' + file().id + '"]').check();
+    await course.frameLocator('#course-list').locator('a[href*="folderid=5"]').click();
+    await course.frameLocator('#course-list').locator('a[href*="fileid=2"]').waitFor();
     await panel.locator('#btnDownload').click();
-    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('已改变'));
-    assert.equal(requests.some(url => url.includes('/download.jsp')), false, 'stale selection never starts a file request');
-    await panel.locator('#btnRescan').click();
-    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('发现 2 个文件'));
+    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('已新增 1 个下载任务'));
+    assert.equal(await panel.evaluate(async () => (await chrome.storage.session.get('courseResourceScanV2')).courseResourceScanV2.id), initialScan);
+    await panel.locator('[data-mode="unit-all"]').click();
+    assert.equal(await panel.locator('input[data-kind="file"]').count(), 1);
+    assert.equal(await panel.locator('#selCount').textContent(), '1');
     await panel.locator('[data-mode="tree"]').click();
-    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('发现 2 个文件') && !document.querySelector('#btnRescan').disabled);
+    assert.equal(await panel.locator('input[data-kind="file"]').count(), 2);
+    assert.equal(await panel.locator('input[data-kind="file"][data-id="' + file().id + '"]').isChecked(), true);
+    assert.equal(await panel.evaluate(async () => (await chrome.storage.session.get('courseResourceScanV2')).courseResourceScanV2.id), initialScan, 'range tabs reuse the course snapshot');
+    await panel.locator('#btnClearSel').click();
+    await panel.locator('input[data-kind="file"][data-id="' + file(2).id + '"]').check();
+    await course.evaluate(url => history.replaceState(null, '', url), pageUrl.replace('lid=42', 'lid=43'));
+    await panel.locator('#btnDownload').click();
+    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('已切换课程'));
+    assert.equal(requests.some(url => url.includes('/download.jsp') && new URL(url).searchParams.get('fileid') === '2'), false, 'a real course switch still refuses the old selection');
+    await course.evaluate(url => history.replaceState(null, '', url), pageUrl);
+    await panel.locator('#btnRescan').click();
+    await panel.waitForFunction(() => document.querySelector('#statusBar').textContent.includes('发现 3 个文件') && !document.querySelector('#btnRescan').disabled);
+    assert.notEqual(await panel.evaluate(async () => (await chrome.storage.session.get('courseResourceScanV2')).courseResourceScanV2.id), initialScan, 'manual refresh creates a new course snapshot');
     await panel.screenshot({ path: join(artifacts, 'extension-panel.png'), fullPage: true });
     await panel.setViewportSize({ width: 480, height: 850 });
     assert.ok(await panel.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'extension must not overflow horizontally');

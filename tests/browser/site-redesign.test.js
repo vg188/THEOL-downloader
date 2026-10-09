@@ -41,6 +41,8 @@ test('website works under the Pages subpath: responsive, keyboard, no-JS, clipbo
     page.on('request', request => requests.push(request.url())); page.on('response', response => { if(response.status()>=400)failed.push({url:response.url(),status:response.status()}); });
     await page.goto(base, { waitUntil:'networkidle' });
     assert.equal(await page.locator('h1').count(), 1);
+    assert.equal(await page.locator('.context-strip, .features-section, .priority-list').count(), 0);
+    assert.equal(await page.locator('#features.workflow-section').count(), 1);
     const responsive = [];
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: width < 640 ? 844 : 1000 });
@@ -57,6 +59,10 @@ test('website works under the Pages subpath: responsive, keyboard, no-JS, clipbo
     await page.evaluate(()=>{document.documentElement.style.zoom='2';});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'200% CSS zoom must not create document overflow');
     await page.screenshot({path:join(artifacts,'verified-home-200-percent.png'),fullPage:true});
+    await page.goto(base);
+    await page.locator('.site-nav a[href="#features"]').click();
+    assert.equal(new URL(page.url()).hash, '#features');
+    assert.ok(await page.locator('#workflow-title').isVisible());
     await page.goto(base);
     await page.keyboard.press('Tab'); assert.equal(await page.evaluate(()=>document.activeElement.className),'skip-link');
     await page.keyboard.press('Enter'); assert.equal(new URL(page.url()).hash, '#main');

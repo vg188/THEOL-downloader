@@ -105,7 +105,7 @@ function assertResourceResponse(response, identity) {
   if (response.redirected || !matchesFileUrl(identity, response.url || identity.downloadUrl)) throw problem('BAD_FILE', '下载已跳转，不是所选文件');
 }
 function withPreviewWarning(inspection, file) {
-  return file.downloadKind === 'preview' ? { ...inspection, warnings: [{ code: 'PREVIEW_COPY', message: previewNotice(file) }, ...(inspection.warnings || [])] } : inspection;
+  return isGeneratedPreview(file) ? { ...inspection, warnings: [{ code: 'PREVIEW_COPY', message: previewNotice(file) }, ...(inspection.warnings || [])] } : inspection;
 }
 async function fetchPreviewImage(value, file, { fetchImpl, signal, maxBytes }) {
   const url = previewAssetUrl(value, file, { kind: 'image' });

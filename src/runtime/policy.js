@@ -221,19 +221,24 @@ function validatePreviewSource(input, courseId) {
 }
 export const isGeneratedPreview = file => file?.downloadKind === 'preview' && ['slides', 'text', 'html'].includes(file.preview?.kind);
 export const requiresPreparedDownload = file => isGeneratedPreview(file) || isPreviewSource(file);
-export const previewFilename = (name, ext) => trimWhitespace(name).normalize('NFC').replace(/\.[a-z0-9]{1,8}$/i, '') + '（预览版）.' + ext;
+export function previewFilename(name, ext) {
+  const original = trimWhitespace(name).normalize('NFC');
+  // The preview route is a transport, not a filename suffix. Preserve exact
+  // names for matching formats and change only the extension when converted.
+  return extOf(original) === String(ext).toLowerCase() ? original : original.replace(/\.[a-z0-9]{1,8}$/i, '') + '.' + ext;
+}
 export function previewSummary(file) {
   if (isPreviewSource(file)) return '整份资源流 · ' + file.ext.toUpperCase();
   if (file?.downloadKind !== 'preview') return '';
-  return '预览版 ' + file.ext.toUpperCase() + (file.preview.kind === 'slides' ? ' · ' + file.preview.pages.length + ' 页' : '');
+  return (file.preview.kind === 'slides' ? '图片合成 ' : file.preview.kind === 'html' ? '离线 ' : '平台文件 · ') + file.ext.toUpperCase() + (file.preview.kind === 'slides' ? ' · ' + file.preview.pages.length + ' 页' : '');
 }
 export function previewNotice(file) {
   if (isPreviewSource(file)) return '预览页提供的原格式文件流；保存前完整校验，保留文件字节，不用分页图片合成';
   if (file?.downloadKind !== 'preview') return '';
   if (file.preview.kind === 'slides') return '由平台提供的 ' + file.preview.pages.length + ' 页图片合成，不含可编辑内容、动画、备注或平台未提供的页面';
-  if (file.preview.kind === 'pdf') return '直接保存平台提供的整份预览 PDF，不重新合成；它不是原始 PPT/Word 文件';
+  if (file.preview.kind === 'pdf') return '直接保存平台提供的完整 PDF，保留文件字节，不重新合成';
   if (file.preview.kind === 'html') return '平台富文本预览的离线 HTML，保留正文、表格和内嵌图片；不是原始 Word 文件';
-  return file.preview.kind === 'text' ? '平台在线文本的 UTF-8 副本，不是教师上传的原文件' : '平台用于预览的副本，不是教师上传的原文件';
+  return file.preview.kind === 'text' ? '将平台提供的正文保存为 UTF-8 文本' : '保存平台提供的完整音视频文件';
 }
 export function validatePreviewFile(input, courseId) {
   const lid = String(input.lid || '');

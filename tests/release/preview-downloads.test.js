@@ -18,7 +18,7 @@ const imageResponse = url => response(pagePNG(url === PAGE_URLS[0] ? 40 : 30, ur
 
 test('a platform whole PDF is preferred over page images and downloaded byte-for-byte', async () => {
   const f = previewFile(slideHTML(PAGE_URLS, '<script>var pdfUrl="' + WHOLE_PDF + '";</script>'));
-  assert.equal(f.preview.kind, 'pdf'); assert.equal(f.name, 'Lesson One（预览版）.pdf'); assert.equal(f.sizeBytes, null);
+  assert.equal(f.preview.kind, 'pdf'); assert.equal(f.name, 'Lesson One.pdf'); assert.equal(f.sizeBytes, null);
   const requests = [];
   const bytes = await fetchFileBytes(f, { fetchImpl: async url => { requests.push(url); return response(fixtureBytes('sample.pdf'), url, 'application/pdf'); } });
   assert.deepEqual(requests, [WHOLE_PDF]); assert.deepEqual(Buffer.from(bytes), fixtureBytes('sample.pdf'));
@@ -44,7 +44,7 @@ test('metadata scans resolve nested preview manifests without reading any file o
     assert.equal(url, VIEWER_URL); return response(slideHTML(), url);
   } }).scan({ mode: 'directory' });
   assert.deepEqual(requests, [original.previewUrl, VIEWER_URL]); const f = result.files[0];
-  assert.equal(f.downloadable, true); assert.equal(f.preview.kind, 'slides'); assert.equal(f.name, 'Lesson One（预览版）.pdf'); assert.equal(f.originalName, 'Lesson One.pptx');
+  assert.equal(f.downloadable, true); assert.equal(f.preview.kind, 'slides'); assert.equal(f.name, 'Lesson One.pdf'); assert.equal(f.originalName, 'Lesson One.pptx');
   assert.deepEqual(availabilityCounts([f]), { total: 1, downloadable: 1, previewOnly: 0, unverified: 0, previewDownloads: 1 });
 });
 test('inline units bind preview downloads to their real course page and file ID', async t => {
@@ -53,27 +53,27 @@ test('inline units bind preview downloads to their real course page and file ID'
   const requested=[]; const result = await createCourseScanner({ window: win, fetchImpl: async value => { requested.push(value); return response(slideHTML(), value); } }).scan({ mode: 'unit-current' });
   assert.equal(requested.length, 1); assert.equal(result.files[0].id, 'preview-only:42:1'); assert.equal(validateFile(result.files[0], '42').downloadKind, 'preview');
 });
-test('direct player media becomes a named preview MP4, not a fabricated original endpoint', async () => {
+test('direct player media retains its MP4 filename, not a fabricated original endpoint', async () => {
   const f = previewFile(mediaHTML(), sourceFile({ originalName: 'Lecture Video.mp4', sizeBytes: 99999999, sizeExact: true }));
-  assert.equal(f.preview.kind, 'media'); assert.equal(f.downloadUrl, MEDIA_URL); assert.equal(f.name, 'Lecture Video（预览版）.mp4'); assert.equal(f.sizeExact, false);
+  assert.equal(f.preview.kind, 'media'); assert.equal(f.downloadUrl, MEDIA_URL); assert.equal(f.name, 'Lecture Video.mp4'); assert.equal(f.sizeExact, false);
   const bytes = await fetchFileBytes(f, { fetchImpl: async url => response(mediaBytes(), url, 'video/mp4') }); assert.deepEqual(bytes, mediaBytes());
 });
-test('online text is an explicitly labelled UTF-8 download without executing embedded scripts', async t => {
+test('online text is a UTF-8 download with a clean filename without executing embedded scripts', async t => {
   const online = ORIGIN + '/meol/common/script/onlinepreview.jsp?lid=42&resid=101';
   const win = new JSDOM('<table class="valuelist"><tr><td><a href="' + online + '">阅读材料</a></td></tr></table>', { url: LIST }).window; t.after(() => win.close());
   const result = await createCourseScanner({ window: win, fetchImpl: async url => response('<input type="hidden" id="26_content" value="&lt;p&gt;第一段&lt;/p&gt;&lt;p&gt;第二段&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;">', url) }).scan({ mode: 'directory' });
-  const f=result.files[0]; assert.equal(f.name, '阅读材料（预览版）.txt'); const bytes=await fetchFileBytes(f, { fetchImpl: async()=>{throw Error('text does not fetch a body');} });
+  const f=result.files[0]; assert.equal(f.name, '阅读材料.txt'); const bytes=await fetchFileBytes(f, { fetchImpl: async()=>{throw Error('text does not fetch a body');} });
   assert.equal(new TextDecoder().decode(bytes), '第一段\n第二段\n');
 });
 test('mixed-media online lessons are not falsely exported as complete text', () => {
   const f=sourceFile({ id:'online-only:42:101', previewUrl:'', sourceUrl:ORIGIN+'/meol/common/script/onlinepreview.jsp?lid=42&resid=101' });
   assert.equal(previewFile('<input type="hidden" id="1_content" value="&lt;p&gt;内容&lt;/p&gt;&lt;img src=x&gt;">',f),null);
 });
-test('generated PDF preserves every page, order and aspect ratio and marks itself as a preview', async () => {
+test('generated PDF preserves pages and records its image source without altering the filename', async () => {
   const f=previewFile(), requests=[], progress=[];
   const bytes=await fetchFileBytes(f,{fetchImpl:async url=>{requests.push(url);return imageResponse(url);},onProgress:p=>progress.push(p.page)});
   assert.deepEqual(requests,PAGE_URLS); assert.deepEqual(progress,[1,2]); const doc=await PDFDocument.load(bytes);
-  assert.equal(doc.getPageCount(),2); assert.deepEqual(doc.getPages().map(p=>p.getSize()),[{width:30,height:22.5},{width:22.5,height:30}]); assert.match(doc.getTitle(),/预览版/); assert.match(doc.getSubject(),/不是原始/);
+  assert.equal(doc.getPageCount(),2); assert.deepEqual(doc.getPages().map(p=>p.getSize()),[{width:30,height:22.5},{width:22.5,height:30}]); assert.equal(doc.getTitle(),f.name); assert.match(doc.getSubject(),/不是原始/);
   assert.equal(inspectFileContent(bytes,f).level,'document-structure');
 });
 test('a missing preview page aborts the entire document instead of saving a partial PDF', async () => {
@@ -93,7 +93,7 @@ test('complete generated previews are reused by individual downloads, not submit
 });
 test('ZIP entries use actual preview formats and retain whole PDF bytes',async()=>{
   const f=previewFile('<embed src="'+WHOLE_PDF+'">'); const result=await createArchive([f],{fetchImpl:async url=>response(fixtureBytes('sample.pdf'),url,'application/pdf')});
-  const entries=unzipSync(new Uint8Array(await result.blob.arrayBuffer())); assert.deepEqual(Object.keys(entries),['课程资源/Lesson One（预览版）.pdf']); assert.deepEqual(Buffer.from(Object.values(entries)[0]),fixtureBytes('sample.pdf')); assert.equal(result.warnings[0].code,'PREVIEW_COPY');
+  const entries=unzipSync(new Uint8Array(await result.blob.arrayBuffer())); assert.deepEqual(Object.keys(entries),['课程资源/Lesson One.pdf']); assert.deepEqual(Buffer.from(Object.values(entries)[0]),fixtureBytes('sample.pdf')); assert.equal(result.warnings.length,0);
 });
 test('preview responses may use a server-generated name, but not a different format',async()=>{
   const f=previewFile('<embed src="'+WHOLE_PDF+'">');
@@ -126,7 +126,7 @@ test('preview download redirects are rejected before the bytes can be saved',asy
 test('native queue downloads and verifies an extension-owned preview Blob, then releases it',async()=>{
   const f=previewFile(), native=nativeDownloads(), released=[];const storage=memoryStorage();const blob='blob:chrome-extension://abcdefghijklmnopabcdefghijklmnop/local-pdf';
   const queue=createDownloadQueue({storage,downloads:native.downloads,extensionId:'abcdefghijklmnopabcdefghijklmnop',preflight:async()=>({blobUrl:blob,expectedBytes:123,expectedFileBytes:123,sampleComplete:true}),releasePrepared:async id=>released.push(id),makeId:()=> 'preview-job'});
-  await queue.enqueue([f],{requestId:'preview-1'});await waitFor(()=>native.calls.length===1); assert.equal(native.calls[0].url,blob);assert.match(native.calls[0].filename,/预览版.*\.pdf$/);
+  await queue.enqueue([f],{requestId:'preview-1'});await waitFor(()=>native.calls.length===1); assert.equal(native.calls[0].url,blob);assert.equal(native.calls[0].filename,'课件/课程资源/Lesson One.pdf');
   Object.assign(native.items.get(1),{state:'complete',fileSize:123,totalBytes:123,exists:true});const jobs=await queue.refresh(); assert.equal(jobs[0].status,'done');assert.ok(released.includes('preview-job'));assert.equal(storage.peek().jobs[0].preflight.bytes,undefined);
 });
 test('native queue will not submit a preview JSP when local PDF generation returns no Blob',async()=>{
@@ -138,9 +138,9 @@ test('bookmarklet UI selects preview copies and saves a whole PDF inside ZIP wit
     if(url.includes('download_preview.jsp'))return response(previewHTML(f,false)+'<iframe src="/meol/viewer/web/viewer.html?file='+encodeURIComponent(WHOLE_PDF)+'"></iframe>',url);
     if(url===WHOLE_PDF)return response(fixtureBytes('sample.pdf'),url,'application/pdf');return response(listHTML([f]),url);
   }});
-  await waitFor(()=>!h.panel.getElementById('btnScan').disabled);assert.equal(h.panel.querySelector('input[data-kind="file"]').disabled,false);assert.match(h.panel.getElementById('tree').textContent,/整份预览 PDF/);
+  await waitFor(()=>!h.panel.getElementById('btnScan').disabled);assert.equal(h.panel.querySelector('input[data-kind="file"]').disabled,false);assert.match(h.panel.getElementById('tree').textContent,/完整 PDF/);
   h.panel.getElementById('btnSelVis').click();h.panel.getElementById('btnDl').click();await waitFor(()=>h.blobs.length===1);
-  const entries=unzipSync(new Uint8Array(await h.blobs[0].arrayBuffer()));assert.deepEqual(Object.keys(entries),['课程资源/Lesson One（预览版）.pdf']);assert.deepEqual(Buffer.from(Object.values(entries)[0]),fixtureBytes('sample.pdf'));
+  const entries=unzipSync(new Uint8Array(await h.blobs[0].arrayBuffer()));assert.deepEqual(Object.keys(entries),['课程资源/Lesson One.pdf']);assert.deepEqual(Buffer.from(Object.values(entries)[0]),fixtureBytes('sample.pdf'));
   assert.equal(h.requests.some(r=>r.url.includes('_slide-')||r.url.includes('/download.jsp')),false);
 });
 
@@ -149,7 +149,7 @@ test('Word rich previews become self-contained HTML with tables/images and no ac
   const html='<p onclick="alert(1)">保留正文</p><table><tr><td colspan="2">保留表格</td></tr></table><img src="'+image+'" onerror="alert(1)"><script>alert(1)</script><a href="javascript:alert(1)">链接</a>';
   const document=parse('<input type="hidden" id="88_content" value="'+html.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;')+'">');
   const f=findPreviewDownload(document,sourceFile({originalName:'Lecture.docx'}),VIEWER_URL).file;
-  assert.equal(f.name,'Lecture（预览版）.html');assert.equal(f.preview.kind,'html');assert.deepEqual(f.preview.images,[image]);
+  assert.equal(f.name,'Lecture.html');assert.equal(f.preview.kind,'html');assert.deepEqual(f.preview.images,[image]);
   const bytes=await fetchFileBytes(f,{fetchImpl:async url=>{assert.equal(url,image);return response(pagePNG(),url,'image/png');}});const saved=new TextDecoder().decode(bytes);
   assert.match(saved,/<table>/);assert.match(saved,/data:image\/png;base64,/);assert.match(saved,/Content-Security-Policy/);assert.match(saved,/保留正文/);
   assert.doesNotMatch(saved,/<script|onclick|onerror|javascript:|buct-preview-image:|src="https?:/);

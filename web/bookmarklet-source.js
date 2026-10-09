@@ -403,7 +403,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
     }
     function assertCurrentContext() {
       checkCancelled(state.activeAbort?.signal);
-      if (!state.contextKey || makeScanner().contextKey() !== state.contextKey) throw problem('STALE_SCAN', '课程页面已改变，请重新汇总后下载');
+      if (!state.contextKey || makeScanner().contextKey() !== state.contextKey) throw problem('STALE_SCAN', '已切换课程，请汇总当前课程后下载');
     }
 
     function openSettings() {
@@ -636,7 +636,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
       } else {
         const ext = document.createElement('span');
         ext.className = 'ext';
-        ext.textContent = node.downloadKind === 'preview' ? '预览版 ' + node.ext.toUpperCase() : (node.ext || '').toUpperCase();
+        ext.textContent = node.downloadKind === 'preview' ? '' + node.ext.toUpperCase() : (node.ext || '').toUpperCase();
         row.appendChild(ext);
       }
       wrap.appendChild(row);
@@ -718,7 +718,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
       let msg = '已汇总：课程资源 ' + state.stats.resourceFiles + ' 个，单元学习 ' + state.stats.unitFiles + ' 个（' + state.stats.units + ' 个单元）';
       const counts = availabilityCounts(state.files);
       const unavailableCount = counts.previewOnly + counts.unverified;
-      if (counts.previewDownloads) msg += '，可下载预览副本 ' + counts.previewDownloads + ' 个';
       if (counts.previewOnly) msg += '，' + counts.previewOnly + ' 个暂不支持保存';
       if (counts.unverified) msg += '，' + counts.unverified + ' 个无法读取';
       if (state.failures.length) msg += '，' + state.failures.length + ' 项读取失败';
@@ -738,11 +737,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
       try {
         const scanner = makeScanner({ signal: state.activeAbort.signal, onProgress: text => setStatus(text, 'busy') });
         const key = scanner.contextKey();
-        const count = scanner.unitCount();
-        const includeAllUnits = !count || window.confirm('已发现 ' + count + ' 个学习单元。是否读取全部单元页面并汇总课件？取消则只读取当前单元和课程资源，不会自动下载文件。');
-        const result = await scanner.scanAll({ includeAllUnits });
+        const result = await scanner.scanAll();
         checkCancelled(state.activeAbort.signal);
-        if (scanner.contextKey() !== key) throw problem('STALE_SCAN', '课程页面已改变，请重新汇总');
+        if (scanner.contextKey() !== key) throw problem('STALE_SCAN', '已切换课程，请汇总当前课程');
         state.contextKey = key;
         applyResult(result);
       } catch (error) {

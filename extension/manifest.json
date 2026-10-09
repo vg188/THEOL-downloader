@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "课程资源助手",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "在 THEOL 教学平台打开完整标签页面板：扫描课程资源目录树/单元学习，树状勾选后批量下载 PDF、PPT、Word 等课件。",
   "icons": {
     "48": "icons/icon48.png",

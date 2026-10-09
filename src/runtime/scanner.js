@@ -148,16 +148,16 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
     return { document: parse(result.html), url: result.url, html: result.html };
   }
   function frames() {
-    const all = [], seen = new Set(), pending = [window];
+    const all = [], seen = new Set(), pending = [{ window, ancestors: [] }];
     while (pending.length && seen.size < 128) {
-      const win = pending.shift();
+      const { window: win, ancestors } = pending.shift();
       if (!win || seen.has(win)) continue;
       seen.add(win);
       try {
         const url = schoolUrl(win.location.href);
         if (url.origin !== origin) continue;
-        all.push({ window: win, document: win.document, url: url.href });
-        for (let i = 0; i < win.frames.length; i++) pending.push(win.frames[i]);
+        all.push({ window: win, ancestors, document: win.document, url: url.href });
+        for (let i = 0; i < win.frames.length; i++) pending.push({ window: win.frames[i], ancestors: [...ancestors, win] });
       } catch { /* Cross-origin frames are deliberately not inspected. */ }
     }
     return all;
@@ -172,6 +172,8 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
     const all = frames();
     if (!all.length) throw problem('UNSUPPORTED_PAGE', '请进入学校教学平台的课程页');
     if (all.some(frame => /登录|登陆|统一身份认证/.test(frame.document.title) || frame.document.querySelector('input[type="password"]'))) throw problem('LOGIN_REQUIRED', '请先登录教学平台');
+    courseId = '';
+    courseName = '课件';
     const direct = courseFrom(window.location.href);
     const ids = new Set();
     for (const frame of all) { const id = courseFrom(frame.url); if (id) ids.add(id); }
@@ -191,6 +193,11 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
       if (title) { courseName = displayName(title); break; }
     }
     return relevant;
+  }
+  // Freeze the course shell before asynchronous reads: browsing another folder
+  // or replacing a frame must not change the resources of an in-flight scan.
+  function captureContext() {
+    return context().map(frame => ({ ...frame, document: frame.document.cloneNode(true) }));
   }
   function indexFor(all) {
     const units = new Map();
@@ -328,15 +335,7 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
       }
     } else {
       const roots = unitRoots(all);
-      const sources = all.filter(frame => roots.some(parent => {
-        let current = frame.window;
-        while (current) {
-          if (current === parent.window) return true;
-          if (current === current.parent) break;
-          current = current.parent;
-        }
-        return false;
-      }));
+      const sources = all.filter(frame => roots.some(parent => frame.window === parent.window || frame.ancestors.includes(parent.window)));
       for (const frame of sources) await appendFiles(root, frame, 'unit', seen);
       if (!sources.length) throw problem('UNSUPPORTED_PAGE', '请先打开单元学习页面');
     }
@@ -344,8 +343,14 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
   }
   async function scan(options = {}) {
     const mode = options.mode || 'auto';
+    if (mode === 'course') {
+      const result = await scanAll();
+      const tree = folder('全部课程');
+      tree.children = [result.resourceTree, result.unitTree];
+      return { ...result, tree, files: flattenFiles(tree), surface: 'course', defaultMode: 'course', modes: ['course', 'tree', 'unit-all'] };
+    }
     if (!['auto', 'directory', 'tree', 'unit-current', 'unit-all'].includes(mode)) throw problem('INVALID_MODE', '不支持的扫描范围');
-    const all = context(), index = indexFor(all);
+    const all = captureContext(), index = indexFor(all);
     const activeUnit = unitRoots(all).length > 0;
     const resource = ['directory', 'tree'].includes(mode) || mode === 'auto' && !activeUnit && all.some(frame => isList(frame.url));
     const chosen = mode === 'auto' ? resource ? 'directory' : 'unit-current' : mode;
@@ -353,7 +358,7 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
     return { ok: true, courseName, lid: courseId, surface: resource ? 'resource-directory' : 'unit-study', modes: resource ? ['directory', 'tree'] : index.length ? ['unit-current', 'unit-all'] : ['unit-current'], defaultMode: chosen, tree, files: flattenFiles(tree), unitIndex: index, failures: [...failures], unavailable: flattenFiles(tree).filter(file => !isDownloadable(file)) };
   }
   async function scanAll({ includeAllUnits = true } = {}) {
-    const all = context(), index = indexFor(all);
+    const all = captureContext(), index = indexFor(all);
     let resourceTree = folder('课程资源'), unitTree = folder('单元学习', ['单元学习']);
     report('正在扫描课程资源目录树…');
     try { resourceTree = await resources(all, true); }
@@ -371,7 +376,7 @@ export function createCourseScanner({ window, fetchImpl = globalThis.fetch, sign
   }
   function contextKey() {
     const all = context();
-    return JSON.stringify({ courseId, frames: all.map(frame => ({ url: frame.url, files: extractFiles(frame.document, frame.url, courseId).map(file => file.id), units: extractUnitIndex(frame.document, frame.url, courseId).map(unit => unit.entryUrl) })) });
+    return JSON.stringify({ origin: schoolUrl(all[0].url).origin, courseId });
   }
   return { scan, scanAll, contextKey, unitCount: () => indexFor(context()).length };
 }

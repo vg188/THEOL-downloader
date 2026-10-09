@@ -480,3 +480,5 @@ html, body {
 .job-warning { margin-top: 6px; color: var(--warn); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 
 .tree-ext.preview-type { color: var(--accent-2); white-space: nowrap; }
+
+.scope-tab[hidden] { display: none; }

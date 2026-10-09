@@ -34,19 +34,35 @@ function trustedPanel(sender) {
   return sender.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.split(/[?#]/)[0] === PANEL_URL;
 }
 async function openPanel(courseTabId) {
-  // Update the course binding before opening/focusing the panel, including reuse.
+  let changed = false;
   if (Number.isInteger(courseTabId)) {
     const tab = await chrome.tabs.get(courseTabId);
     if (isSchoolUrl(tab.url)) {
-      generation++;
-      await chrome.storage.session.set({ courseTabId, [SCAN_KEY]: null });
+      const bindingGeneration = generation;
+      const stored = await chrome.storage.session.get(null), snapshot = stored[SCAN_KEY];
+      let sameCourse = false;
+      if (snapshot?.result) {
+        const context = await sendToCourse(tab.id, { type: 'BUCT_CONTEXT' }).catch(() => null);
+        sameCourse = context?.ok && context.contextKey === snapshot.contextKey;
+      }
+      const latest = (await chrome.storage.session.get(SCAN_KEY))[SCAN_KEY];
+      if (bindingGeneration !== generation || latest?.id !== snapshot?.id) {
+        // A concurrent explicit refresh owns the newer snapshot.
+      } else if (sameCourse) {
+        // Focusing the same course (even in another tab) keeps its snapshot and selection.
+        await chrome.storage.session.set({ courseTabId, [SCAN_KEY]: { ...snapshot, tabId: tab.id, tabUrl: tab.url } });
+      } else if (stored.courseTabId !== courseTabId || snapshot) {
+        generation++;
+        changed = true;
+        await chrome.storage.session.set({ courseTabId, [SCAN_KEY]: null });
+      }
     }
   }
   const existing = await chrome.tabs.query({ url: PANEL_URL + '*' });
   if (existing.length) {
     await chrome.tabs.update(existing[0].id, { active: true });
     await chrome.windows.update(existing[0].windowId, { focused: true });
-    await chrome.runtime.sendMessage({ type: 'COURSE_TAB_CHANGED' }).catch(() => {});
+    if (changed) await chrome.runtime.sendMessage({ type: 'COURSE_TAB_CHANGED' }).catch(() => {});
     return;
   }
   await chrome.tabs.create({ url: PANEL_URL });
@@ -69,17 +85,36 @@ async function sendToCourse(tabId, payload) {
   }
 }
 async function scan(message) {
-  if (!['auto', 'directory', 'tree', 'unit-current', 'unit-all'].includes(message.mode || 'auto')) throw problem('INVALID_MODE', '不支持的扫描范围');
+  const mode = message.mode || 'course';
+  if (!['course', 'auto', 'directory', 'tree', 'unit-current', 'unit-all'].includes(mode)) throw problem('INVALID_MODE', '不支持的扫描范围');
   const tab = message.tabId == null ? await resolveCourseTab() : await chrome.tabs.get(message.tabId);
   if (!Number.isInteger(tab.id) || !isSchoolUrl(tab.url)) throw problem('NO_COURSE', '请先打开学校教学平台的课程页');
+  if (message.reuse === true) {
+    const snapshot = (await chrome.storage.session.get(SCAN_KEY))[SCAN_KEY];
+    if (snapshot?.result && snapshot.tabId === tab.id && snapshot.result.defaultMode === mode) {
+      const context = await sendToCourse(tab.id, { type: 'BUCT_CONTEXT' });
+      const latest = (await chrome.storage.session.get(SCAN_KEY))[SCAN_KEY];
+      if (context?.ok && context.contextKey === snapshot.contextKey && latest?.id === snapshot.id) {
+        return { ...snapshot.result, scanId: snapshot.id, tabId: tab.id, reused: true };
+      }
+    }
+  }
   const current = ++generation;
-  await chrome.storage.session.set({ [SCAN_KEY]: null });
-  const result = await sendToCourse(tab.id, { type: 'BUCT_SCAN', mode: message.mode || 'auto' });
+  await chrome.storage.session.set({ courseTabId: tab.id, [SCAN_KEY]: null });
+  const result = await sendToCourse(tab.id, { type: 'BUCT_SCAN', mode });
   if (current !== generation) throw problem('STALE_SCAN', '扫描已被更新的课程或扫描替换，请重试');
   if (!result?.ok) return result || { ok: false, error: '扫描无响应，请刷新课程页后重试' };
   if (!result.contextKey) throw problem('INVALID_SCAN', '扫描上下文缺失，请刷新课程页');
-  const files = flattenFiles(result.tree).filter(isDownloadable).map(file => validateFile(file, result.lid));
-  const snapshot = { id: crypto.randomUUID(), tabId: tab.id, tabUrl: tab.url, contextKey: result.contextKey, courseName: result.courseName || '课件', files };
+  const seen = new Set();
+  flattenFiles(result.tree).filter(file => {
+    if (!isDownloadable(file) || seen.has(file.id)) return false;
+    seen.add(file.id); return true;
+  }).forEach(file => validateFile(file, result.lid));
+  const { tree, unitIndex = [], failures = [], surface, defaultMode, modes, contextKey, lid, courseName } = result;
+  const cachedResult = { ok: true, tree, unitIndex, failures, surface, defaultMode, modes, contextKey, lid, courseName };
+  // Store the tree once rather than duplicating every text body and page list
+  // across files, resourceTree, unitTree and the view returned to the panel.
+  const snapshot = { id: crypto.randomUUID(), tabId: tab.id, tabUrl: tab.url, lid, contextKey, courseName: courseName || '课件', result: cachedResult };
   await chrome.storage.session.set({ [SCAN_KEY]: snapshot });
   return { ...result, scanId: snapshot.id, tabId: tab.id };
 }
@@ -87,14 +122,19 @@ async function enqueue(message) {
   const snapshot = (await chrome.storage.session.get(SCAN_KEY))[SCAN_KEY];
   if (!snapshot || snapshot.id !== message.scanId) throw problem('STALE_SCAN', '扫描已过期，请重新扫描后选择文件');
   if (!Array.isArray(message.ids) || !message.ids.length || message.ids.length > 2000 || message.ids.some(id => typeof id !== 'string')) throw problem('INVALID_SELECTION', '请选择有效的课件');
-  const byId = new Map(snapshot.files.map(file => [file.id, file]));
+  const byId = new Map();
+  for (const file of snapshot.result ? flattenFiles(snapshot.result.tree) : snapshot.files || []) {
+    if (isDownloadable(file) && !byId.has(file.id)) byId.set(file.id, validateFile(file, snapshot.lid));
+  }
   const ids = [...new Set(message.ids)];
   if (ids.some(id => !byId.has(id))) throw problem('INVALID_SELECTION', '所选文件不属于本次扫描');
   const tab = await chrome.tabs.get(snapshot.tabId);
-  if (tab.url !== snapshot.tabUrl || !isSchoolUrl(tab.url)) throw problem('STALE_SCAN', '课程页面已改变，请重新扫描');
+  if (!isSchoolUrl(tab.url)) throw problem('STALE_SCAN', '已离开教学平台，请打开对应课程后下载');
   const context = await sendToCourse(tab.id, { type: 'BUCT_CONTEXT' });
   const latest = (await chrome.storage.session.get(SCAN_KEY))[SCAN_KEY];
-  if (!context?.ok || context.contextKey !== snapshot.contextKey || latest?.id !== snapshot.id) throw problem('STALE_SCAN', '目录或单元已改变，请重新扫描后再下载');
+  if (!context?.ok) throw problem(context?.code || 'STALE_SCAN', context?.error || '暂时无法确认课程，请回到对应课程页后重试');
+  if (context.contextKey !== snapshot.contextKey) throw problem('STALE_SCAN', '已切换课程，请汇总当前课程后下载');
+  if (latest?.id !== snapshot.id) throw problem('STALE_SCAN', '课程列表已刷新，请使用当前列表选择文件');
   // Message-supplied URLs/names are intentionally ignored; only stored files enter the queue.
   return { ok: true, ...await queue.enqueue(ids.map(id => byId.get(id)), { courseName: snapshot.courseName, requestId: message.requestId }) };
 }

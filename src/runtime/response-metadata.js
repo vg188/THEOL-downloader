@@ -62,7 +62,7 @@ export function assertResponseFilename(file, disposition) {
   const expected = trimWhitespace(file.name).normalize('NFC');
   if (file.downloadKind === 'preview') {
     if (name && extOf(name) && extOf(name) !== extOf(expected)) throw problem('FILENAME_MISMATCH', '预览响应的文件后缀与可保存格式不一致');
-    return name; // Preview servers often use a generated UUID; our explicit copy name is intentional.
+    return name; // Preview servers can use a generated UUID; the course metadata supplies the user-facing filename.
   }
   if (name && name.toLowerCase() !== expected.toLowerCase()) {
     throw problem('FILENAME_MISMATCH', '原文件名与下载响应不一致：预览为「' + expected + '」，响应为「' + name + '」。请重新扫描，不会静默改名');

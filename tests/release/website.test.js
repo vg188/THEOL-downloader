@@ -53,14 +53,25 @@ test('same extension inputs always produce the same package hash and bytes', asy
 test('website preserves navigation anchors, one main heading and no external active assets', t => {
   const { doc } = documentFor(t);
   assert.equal(doc.querySelectorAll('h1').length, 1);
+  assert.equal(doc.querySelector('link[rel="canonical"]').href, 'https://h.yourba.top/THEOL-downloader/');
   for (const id of ['main', 'install', 'features', 'download', 'faq']) assert.ok(doc.getElementById(id));
   assert.ok(doc.querySelector('a.skip-link[href="#main"]'));
   for (const link of doc.querySelectorAll('a[href^="#"]')) assert.ok(doc.querySelector(link.getAttribute('href')), 'missing anchor ' + link.getAttribute('href'));
   for (const node of doc.querySelectorAll('script[src],img[src],link[rel="stylesheet"]')) assert.doesNotMatch(node.getAttribute('src') || node.getAttribute('href'), /^(?:https?:)?\/\//);
   for (const image of doc.images) assert.ok(image.hasAttribute('alt'));
   assert.match(doc.body.textContent, /非学校官方/); assert.match(doc.body.textContent, /仅下载你有权访问/);
-  assert.match(doc.body.textContent, /200 MB \/ 120/); assert.match(doc.body.textContent, /原文件.*优先|原文件，优先/);
+  assert.match(doc.body.textContent, /200 MB \/ 120/); assert.match(doc.body.textContent, /优先保留原文件/);
   assert.doesNotMatch(doc.body.textContent, /[—]|商店已上架|所有课件都能/);
+});
+test('homepage omits redundant context and release explanations while keeping the feature link useful', t => {
+  const { doc } = documentFor(t);
+  assert.equal(doc.querySelector('.context-strip, .features-section, .priority-list'), null);
+  assert.doesNotMatch(doc.body.textContent, /同学做的小工具|在你的浏览器本地运行|能拿整份文件|就不一张张拼图|看看新版能做什么/);
+  assert.deepEqual([...doc.querySelector('main').children].filter(node => node.tagName === 'SECTION').map(node => node.id || 'hero'), ['hero', 'install', 'features', 'download', 'faq']);
+  const features = doc.getElementById('features');
+  assert.ok(features.classList.contains('workflow-section'));
+  assert.equal(features.getAttribute('aria-labelledby'), 'workflow-title');
+  assert.equal(doc.querySelector('.hero-actions a[href="#features"]').textContent, '查看功能');
 });
 test('bookmarks are draggable without running on the installation page', t => {
   const { doc, win } = documentFor(t);
@@ -97,6 +108,7 @@ test('privacy stays navigable and versioned without running site JavaScript', as
   try {
     const doc = dom.window.document; assert.equal(doc.querySelectorAll('h1').length, 1);
     assert.equal(doc.querySelectorAll('script').length, 0);
+    assert.equal(doc.querySelector('link[rel="canonical"]').href, 'https://h.yourba.top/THEOL-downloader/privacy.html');
     for (const id of ['main', 'collection', 'working', 'storage', 'boundaries', 'source']) assert.ok(doc.getElementById(id));
     assert.match(text, /localStorage/); assert.match(text, /Chrome 存储/); assert.match(text, /不上传课件/);
     assert.match(text, new RegExp('v' + RELEASE_VERSION.replaceAll('.', '\\.'))); assert.doesNotMatch(text, /\{\{/);
