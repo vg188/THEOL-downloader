@@ -1,22 +1,26 @@
 {
   "name": "buct-course-downloader",
-  "version": "1.0.1",
+  "version": "2.6.0",
   "private": true,
   "type": "module",
-  "description": "Local-only Chrome extension for BUCT THEOL course downloads",
+  "description": "Local-only THEOL course resource assistant: bookmarklet and Chrome extension",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "build": "node scripts/build.mjs",
-    "package": "python scripts/package.py",
+    "test": "node --test tests/*.test.js tests/bookmarklet/*.test.js tests/release/*.test.js",
+    "build": "node scripts/build-release.mjs",
+    "package": "npm run build:extension && node scripts/package-release.mjs",
     "test:browser": "node --test tests/browser/*.test.js",
     "build:probe": "node scripts/build-probe.mjs",
     "test:probe": "node --test tests/probe*.test.js",
     "test:bookmarklet": "node --test tests/bookmarklet/*.test.js",
-    "build:site": "node scripts/build-site.mjs",
-    "test:site": "node --test tests/site.test.js"
+    "build:site": "node web/build.mjs",
+    "test:site": "node --test tests/site.test.js",
+    "build:extension": "node scripts/build-release.mjs --extension-only",
+    "build:legacy": "node scripts/build.mjs",
+    "build:legacy-site": "node scripts/build-site.mjs",
+    "test:release": "node --test tests/release/*.test.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
@@ -24,6 +28,7 @@
     "playwright-core": "1.63.0"
   },
   "dependencies": {
-    "fflate": "0.8.3"
+    "fflate": "0.8.3",
+    "pdf-lib": "1.17.1"
   }
 }

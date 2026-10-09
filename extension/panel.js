@@ -1,3 +1,5 @@
+import { isDownloadable, availabilityCounts, trimWhitespace, schoolUrl, previewSummary, previewNotice, isGeneratedPreview, isPreviewSource } from '../src/runtime/policy.js';
+
 /* 北化课件下载 · 标签版 — panel controller */
 
 const MODE_LABEL = {
@@ -22,7 +24,7 @@ const state = {
   courseName: '课件',
   surface: null,
   modes: [],
-  mode: 'tree',
+  mode: 'auto',
   tree: null,
   files: [],
   unitIndex: [],
@@ -32,6 +34,12 @@ const state = {
   selected: new Set(),
   collapsed: new Set(),
   scanning: false,
+  submitting: false,
+  scanId: null,
+  scanVersion: 0,
+  pendingRescan: false,
+  requestKey: null,
+  requestId: null,
   jobs: [],
 };
 
@@ -58,8 +66,10 @@ const el = {
   saveFolder: document.getElementById('saveFolder'),
 };
 
-function send(type, payload = {}) {
-  return chrome.runtime.sendMessage({ type, ...payload });
+async function send(type, payload = {}) {
+  const response = await chrome.runtime.sendMessage({ type, ...payload });
+  if (!response?.ok) throw new Error(response?.error || '扩展后台无响应，请稍后重试');
+  return response;
 }
 
 function escapeHtml(s) {
@@ -135,7 +145,7 @@ function nodeVisible(node) {
   if (node.type === 'file') return matchesFilter(fileFromNode(node));
   // folder visible if any descendant file matches, or query matches folder name
   const files = flattenFiles(node);
-  if (files.some(matchesFilter)) return true;
+  if (node.scanError || files.some(matchesFilter)) return true;
   if (state.query && String(node.name || '').toLowerCase().includes(state.query.toLowerCase())) return true;
   return false;
 }
@@ -150,7 +160,7 @@ function fileFromNode(node) {
 function collectVisibleFiles(node, out = []) {
   if (!node || !nodeVisible(node)) return out;
   if (node.type === 'file') {
-    out.push(fileFromNode(node));
+    if (isDownloadable(node)) out.push(fileFromNode(node));
     return out;
   }
   for (const c of node.children || []) collectVisibleFiles(c, out);
@@ -159,17 +169,20 @@ function collectVisibleFiles(node, out = []) {
 
 function relPath(file) {
   const dir = (file.pathSegments || []).filter(Boolean).join('/');
+  if (file.type === 'folder') return dir || file.name;
   return dir ? dir + '/' + file.name : file.name;
 }
 
 function updateSelectionChrome() {
+  for (const id of state.selected) if (!state.files.some(file => file.id === id && isDownloadable(file))) state.selected.delete(id);
   const all = state.files.map(fileFromNode).filter(matchesFilter);
   const selectedFiles = all.filter((f) => state.selected.has(f.id));
   const hiddenSelected = state.files.filter((f) => state.selected.has(f.id) && !matchesFilter(fileFromNode(f))).length;
 
   el.selCount.textContent = String(state.selected.size);
-  el.selHidden.textContent = hiddenSelected ? `（另有 ${hiddenSelected} 个不在当前筛选中）` : '';
-  el.btnDownload.disabled = state.selected.size === 0 || state.scanning;
+  const previewSelected = state.files.filter(f => state.selected.has(f.id) && f.downloadKind === 'preview').length;
+  el.selHidden.textContent = [previewSelected ? '含 ' + previewSelected + ' 个预览副本' : '', hiddenSelected ? '另有 ' + hiddenSelected + ' 个不在当前筛选中' : ''].filter(Boolean).join('；');
+  el.btnDownload.disabled = state.selected.size === 0 || state.scanning || state.submitting;
   el.saveFolder.textContent = state.courseName || '课件';
 
   el.selPreview.innerHTML = '';
@@ -202,7 +215,7 @@ function updateSelectionChrome() {
     const nodeId = input.dataset.id;
     const node = findNode(state.tree, nodeId);
     if (!node) continue;
-    const files = flattenFiles(node).filter(matchesFilter);
+    const files = flattenFiles(node).filter(isDownloadable).filter(matchesFilter);
     if (!files.length) {
       input.checked = false;
       input.indeterminate = false;
@@ -228,7 +241,7 @@ function findNode(node, id) {
 
 function setSubtree(node, checked) {
   if (node.type === 'file') {
-    if (matchesFilter(fileFromNode(node))) {
+    if (isDownloadable(node) && matchesFilter(fileFromNode(node))) {
       if (checked) state.selected.add(node.id);
       else state.selected.delete(node.id);
     }
@@ -243,7 +256,7 @@ function renderScopeTabs() {
   for (const btn of buttons) {
     const mode = btn.dataset.mode;
     const enabled = modes.includes(mode);
-    btn.disabled = !enabled && !state.scanning ? true : !modes.includes(mode);
+    btn.disabled = !enabled || state.scanning || state.submitting;
     btn.classList.toggle('active', state.mode === mode);
     if (!modes.length) btn.disabled = true;
   }
@@ -272,7 +285,9 @@ function renderTreeNode(node, depth = 0) {
   twisty.type = 'button';
   twisty.className = 'twisty' + (isFolder ? '' : ' leaf');
   twisty.textContent = collapsed ? '▶' : '▼';
-  twisty.setAttribute('aria-label', collapsed ? '展开' : '折叠');
+  twisty.setAttribute('aria-label', (collapsed ? '展开 ' : '折叠 ') + node.name);
+  if (isFolder) row.setAttribute('aria-expanded', String(!collapsed));
+  else { twisty.disabled = true; twisty.tabIndex = -1; twisty.setAttribute('aria-hidden', 'true'); }
   if (isFolder) {
     twisty.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -285,8 +300,10 @@ function renderTreeNode(node, depth = 0) {
   const check = document.createElement('input');
   check.type = 'checkbox';
   check.className = 'tree-check';
+  check.setAttribute('aria-label', '选择 ' + node.name);
   check.dataset.id = node.id;
   check.dataset.kind = node.type;
+  if (!isFolder && !isDownloadable(node)) { check.disabled = true; check.title = node.unavailableReason || '未提供下载入口'; }
   if (isFolder) {
     check.addEventListener('change', () => {
       setSubtree(node, check.checked);
@@ -321,11 +338,22 @@ function renderTreeNode(node, depth = 0) {
   } else {
     const ext = document.createElement('span');
     ext.className = 'tree-ext';
-    ext.textContent = (node.ext || '').toUpperCase();
+    ext.textContent = node.downloadKind === 'preview' ? '预览版 ' + node.ext.toUpperCase() : (node.ext || '').toUpperCase();
+    if (node.downloadKind === 'preview') ext.classList.add('preview-type');
     row.appendChild(ext);
   }
 
   wrap.appendChild(row);
+  if (!isFolder && (!isDownloadable(node) || node.downloadKind === 'preview' || isPreviewSource(node))) {
+    const note = document.createElement('div'); note.className = 'file-note';
+    note.textContent = node.downloadKind === 'preview' || isPreviewSource(node) ? previewSummary(node) + '；' + previewNotice(node) + '。' : node.unavailableReason || '未提供下载入口';
+    try {
+      const url = schoolUrl(node.previewUrl || node.sourceUrl);
+      const link = document.createElement('a'); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = '查看平台预览';
+      note.append(' ', link);
+    } catch { /* A read-only item need not have a preview link. */ }
+    wrap.appendChild(note);
+  }
 
   if (isFolder && node.scanError) {
     const err = document.createElement('div');
@@ -349,18 +377,26 @@ function renderTreeNode(node, depth = 0) {
 }
 
 function renderTree() {
-  el.treeRoot.innerHTML = '';
-  if (!state.tree) {
-    el.emptyState.classList.remove('hidden');
-    return;
-  }
-  el.emptyState.classList.add('hidden');
-  const rootEl = renderTreeNode(state.tree, 0);
+  el.treeRoot.replaceChildren();
+  const rootEl = state.tree && renderTreeNode(state.tree, 0);
+  el.emptyState.classList.toggle('hidden', !!rootEl);
   if (rootEl) el.treeRoot.appendChild(rootEl);
+  else {
+    const message = document.createElement('p');
+    message.textContent = state.scanning ? '正在读取课程文件信息…'
+      : !state.tree ? '点击「扫描」读取当前课程；失败后可重试。'
+      : state.mode === 'directory' && state.tree.subfolderCount ? '当前目录没有直接文件，但有 ' + state.tree.subfolderCount + ' 个子目录。切换「目录树」可汇总子目录中的资源。'
+      : state.files.length ? '当前筛选下没有文件，可切换类型或清空搜索。'
+      : '当前范围没有识别到文件，可在平台切换目录或单元后重新扫描。';
+    el.emptyState.replaceChildren(message);
+  }
   updateSelectionChrome();
 }
 
 function renderJobs() {
+  const key = JSON.stringify(state.jobs);
+  if (key === state.jobsRenderKey) return;
+  state.jobsRenderKey = key;
   el.jobsList.innerHTML = '';
   if (!state.jobs.length) {
     const p = document.createElement('div');
@@ -371,22 +407,43 @@ function renderJobs() {
   }
   const statusText = {
     queued: '排队中',
-    preparing: '准备中',
+    preparing: '正在预检',
     downloading: '下载中',
-    done: '已完成',
+    done: '浏览器已完成',
     failed: '失败',
     cancelled: '已取消',
   };
   for (const job of state.jobs) {
     const item = document.createElement('div');
     item.className = 'job-item';
+    item.dataset.jobId = job.id;
     item.innerHTML =
       '<div class="job-name"></div>' +
       '<div class="job-meta"><span class="job-status"></span><span class="job-actions"></span></div>' +
+      '<div class="job-path"></div>' +
+      '<div class="job-detail"></div>' +
+      '<div class="job-warning hidden"></div>' +
       '<div class="job-error hidden"></div>';
     item.querySelector('.job-name').textContent = job.name || job.filename;
-    item.querySelector('.job-status').textContent = statusText[job.status] || job.status;
+    item.querySelector('.job-name').title = job.name || job.filename;
+    item.querySelector('.job-status').textContent = job.status === 'preparing' && isGeneratedPreview(job.file) ? '正在生成预览副本' : statusText[job.status] || job.status;
     item.querySelector('.job-status').className = 'job-status ' + job.status;
+    const pathEl = item.querySelector('.job-path');
+    pathEl.textContent = (job.actualFilename ? '保存路径：' : '计划路径：') + (job.actualFilename || job.filename || '等待分配');
+    pathEl.title = pathEl.textContent;
+    const bytes = value => value >= 1048576 ? (value / 1048576).toFixed(1) + ' MB' : value >= 1024 ? (value / 1024).toFixed(1) + ' KB' : value + ' B';
+    const details = [];
+    if (job.preflight) details.push(job.preflight.sampleComplete && job.preflight.level !== 'unrecognized' ? '格式预检通过' : '响应预检通过');
+    if (job.status === 'downloading' && job.totalBytes > 0) details.push(bytes(job.bytesReceived || 0) + ' / ' + bytes(job.totalBytes));
+    if (job.status === 'done' && Number.isFinite(job.fileSize)) details.push(bytes(job.fileSize));
+    item.querySelector('.job-detail').textContent = details.join(' · ');
+    const warnings = Array.isArray(job.preflight?.warnings) ? [...job.preflight.warnings] : [];
+    if (job.syncWarning) warnings.push({ message: job.syncWarning });
+    if (warnings.length) {
+      const warningEl = item.querySelector('.job-warning');
+      warningEl.textContent = warnings.map(warning => warning.message).join('；');
+      warningEl.classList.remove('hidden');
+    }
     const errEl = item.querySelector('.job-error');
     if (job.error) {
       errEl.textContent = job.error;
@@ -398,8 +455,10 @@ function renderJobs() {
       btn.type = 'button';
       btn.textContent = '重试';
       btn.addEventListener('click', async () => {
-        await send('RETRY_JOB', { id: job.id });
-        await refreshJobs();
+        btn.disabled = true;
+        try { await send('RETRY_JOB', { id: job.id }); await refreshJobs(); }
+        catch (error) { setStatus(error.message, 'error'); }
+        finally { btn.disabled = false; }
       });
       item.querySelector('.job-actions').appendChild(btn);
     }
@@ -420,15 +479,21 @@ function applyScanResult(result) {
     setStatus(result?.error || '扫描失败', 'error');
     state.tree = null;
     state.files = [];
+    state.selected.clear();
+    state.scanId = null;
+    state.unitIndex = [];
+    el.courseName.textContent = "—";
     state.modes = [];
     renderTree();
     renderScopeTabs();
     return;
   }
+  state.scanId = result.scanId;
+  state.courseTabId = result.tabId;
   state.surface = result.surface;
   state.courseName = result.courseName || '课件';
   state.modes = result.modes || [];
-  state.mode = result.defaultMode || state.modes[0] || 'tree';
+  state.mode = result.defaultMode || state.modes[0] || 'auto';
   state.tree = result.tree;
   state.files = flattenFiles(result.tree).map(fileFromNode);
   state.unitIndex = result.unitIndex || [];
@@ -444,12 +509,18 @@ function applyScanResult(result) {
       ? '课程资源 · 可扫描当前目录或完整目录树'
       : '单元学习 · 可扫描当前单元或全部单元';
 
+  const counts = availabilityCounts(state.files);
+  const unavailableCount = counts.previewOnly + counts.unverified;
+  const unavailableText = (counts.previewDownloads ? '，可下载预览副本 ' + counts.previewDownloads + ' 个' : '') + (counts.previewOnly ? '，' + counts.previewOnly + ' 个暂不支持保存' : '') + (counts.unverified ? '，' + counts.unverified + ' 个无法读取' : '');
   const failText = state.failures.length
-    ? `，${state.failures.length} 个单元/目录读取失败`
+    ? `，${state.failures.length} 项读取失败`
     : '';
+  const guidance = state.files.length > unavailableCount ? '勾选后点击「下载所选」。'
+    : unavailableCount ? '可使用列表中的平台预览链接查看。'
+    : state.tree?.subfolderCount ? '当前目录只有子目录，请切换「目录树」。' : '可在平台切换范围后重试。';
   setStatus(
-    `发现 ${state.files.length} 个文件${failText}。勾选后点击「下载所选」。`,
-    'ok'
+    `发现 ${state.files.length} 个文件${unavailableText}${failText}。${guidance}`,
+    unavailableCount || state.failures.length ? '' : 'ok'
   );
   renderScopeTabs();
   renderTypeTabs();
@@ -463,57 +534,59 @@ function expandDepth(node, depth) {
 }
 
 async function doScan(mode) {
-  if (state.scanning) return;
-  state.scanning = true;
-  el.btnRescan.disabled = true;
-  el.btnDownload.disabled = true;
-  setStatus('正在扫描…');
-
-  if (mode) state.mode = mode;
-  // unit-all 需要确认
-  if (state.mode === 'unit-all' && state.unitIndex.length) {
-    const ok = window.confirm(
-      `将读取 ${state.unitIndex.length} 个单元页面并汇总课件。\n只读取页面与文件信息，不会自动下载课件正文。确认扫描？`
-    );
-    if (!ok) {
-      state.scanning = false;
-      el.btnRescan.disabled = false;
-      updateSelectionChrome();
-      setStatus('已取消全部单元扫描');
-      return;
-    }
+  if (state.scanning || state.submitting) return;
+  const requestedMode = mode || state.mode;
+  if (requestedMode === 'unit-all') {
+    if (!state.unitIndex.length) { setStatus('请先扫描当前单元以确认全部单元范围', 'error'); return; }
+    if (!window.confirm('将读取 ' + state.unitIndex.length + ' 个单元页面并汇总课件，不会自动下载文件。确认扫描？')) return;
   }
-
-  const res = await send('SCAN_TAB', {
-    tabId: state.courseTabId,
-    mode: state.mode,
-    recursive: true,
-  });
-  applyScanResult(res);
-  state.scanning = false;
-  el.btnRescan.disabled = false;
-  updateSelectionChrome();
-}
-
-function selectedItems() {
-  return [...state.selected]
-    .map((id) => state.files.find((f) => f.id === id))
-    .filter(Boolean)
-    .map((f) => ({
-      url: f.downloadUrl,
-      name: f.name,
-      filename: `${state.courseName || '课件'}/${relPath(f)}`,
-    }));
+  const version = ++state.scanVersion;
+  state.scanning = true;
+  state.scanId = null;
+  state.selected.clear();
+  state.tree = null; state.files = [];
+  el.btnRescan.disabled = true;
+  renderTree(); renderScopeTabs();
+  setStatus('正在扫描…');
+  try {
+    const tab = (await send('GET_COURSE_TAB')).tab;
+    state.courseTabId = tab.id;
+    const result = await send('SCAN_TAB', { tabId: tab.id, mode: requestedMode });
+    if (version === state.scanVersion) applyScanResult(result);
+  } catch (error) {
+    if (version === state.scanVersion) applyScanResult({ ok: false, error: error.message });
+  } finally {
+    state.scanning = false;
+    el.btnRescan.disabled = false;
+    renderScopeTabs(); renderTree();
+    if (state.pendingRescan) { state.pendingRescan = false; void doScan('auto'); }
+  }
 }
 
 async function doDownload() {
-  const items = selectedItems();
-  if (!items.length) return;
-  el.btnDownload.disabled = true;
-  setStatus(`已提交 ${items.length} 个下载任务…`, 'ok');
-  await send('ENQUEUE', { items });
-  await refreshJobs();
-  updateSelectionChrome();
+  if (state.scanning || state.submitting || !state.scanId) return;
+  const ids = [...state.selected].filter(id => state.files.some(file => file.id === id && isDownloadable(file)));
+  if (!ids.length) return;
+  state.submitting = true;
+  el.btnRescan.disabled = true;
+  updateSelectionChrome(); renderScopeTabs();
+  const key = state.scanId + '|' + [...ids].sort().join(',');
+  if (state.requestKey !== key) { state.requestKey = key; state.requestId = crypto.randomUUID(); }
+  setStatus('正在提交下载任务…');
+  try {
+    const response = await send('ENQUEUE', { scanId: state.scanId, ids, requestId: state.requestId });
+    state.jobs = response.jobs || [];
+    renderJobs();
+    const count = response.created?.length || 0;
+    setStatus(count ? '已新增 ' + count + ' 个下载任务' + (count < ids.length ? '，进行中的文件未重复提交' : '') : '所选文件已在队列中，未重复提交', 'ok');
+    state.requestKey = null; state.requestId = null;
+  } catch (error) { setStatus(error.message, 'error'); }
+  finally {
+    state.submitting = false;
+    el.btnRescan.disabled = false;
+    updateSelectionChrome(); renderScopeTabs();
+    if (state.pendingRescan) { state.pendingRescan = false; void doScan('auto'); }
+  }
 }
 
 async function init() {
@@ -543,12 +616,12 @@ async function init() {
     renderTree();
   });
   el.btnClearJobs.addEventListener('click', async () => {
-    await send('CLEAR_FINISHED');
-    await refreshJobs();
+    try { await send('CLEAR_FINISHED'); await refreshJobs(); }
+    catch (error) { setStatus(error.message, 'error'); }
   });
 
   el.searchInput.addEventListener('input', () => {
-    state.query = el.searchInput.value.trim();
+    state.query = trimWhitespace(el.searchInput.value);
     renderTree();
   });
 
@@ -566,8 +639,22 @@ async function init() {
     renderTree();
   });
 
-  await refreshJobs();
-  setInterval(refreshJobs, 1500);
+  await refreshJobs().catch(error => setStatus(error.message, 'error'));
+  let refreshing = false;
+  const timer = setInterval(async () => {
+    if (refreshing) return;
+    refreshing = true;
+    try { await refreshJobs(); } catch { /* Leave the current user action's status intact; next tick retries. */ }
+    finally { refreshing = false; }
+  }, 1500);
+  window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (sender.id !== chrome.runtime.id || message?.type !== 'COURSE_TAB_CHANGED') return;
+    state.scanVersion++;
+    state.scanId = null; state.selected.clear();
+    if (state.scanning || state.submitting) state.pendingRescan = true;
+    else void doScan('auto');
+  });
 
   // 自动定位课程标签页并尝试扫描
   const tabRes = await send('GET_COURSE_TAB').catch(() => null);

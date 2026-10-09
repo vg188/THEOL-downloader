@@ -1,10 +1,18 @@
 import { ORIGIN, AppError, isUnavailable, numericParam, normalizeResourceUrl, pathWithoutSession, schoolUrl } from './policy.js';
+import { parseDirectory } from './parse.js';
 
 export const UNIT_PATHS = Object.freeze({
   entry: '/meol/jpk/course/course_column_preview_transfer.jsp',
   lesson: '/meol/jpk/course/layout/lesson/index.jsp',
   newpage: '/meol/jpk/course/layout/newpage/index.jsp',
 });
+
+// A course page carries several column lists at once: the tab bar in the header,
+// collapsed side menus, and the unit list the student actually reads. Only the
+// last one may define the scan range, so a list that sits inside page navigation
+// is treated as navigation. `.nav` matches the whole class token, so a themed
+// `lesson-nav` is not caught here.
+const NAVIGATION = 'nav, [role=navigation], [role=menubar], [role=tablist], .nav, .navbar';
 
 function exactKeys(url, expected) {
   const actual = [...new Set(url.searchParams.keys())].sort();
@@ -81,30 +89,38 @@ export function parseUnitPageFrames(rootWindow, pageUrl) {
   if (!rootWindow?.document) return null;
   const page = parseUnitPage(rootWindow.document, pageUrl);
   if (!page) return null;
-  const resources = page.resources, seen = new Set(resources.map(resource => resource.id));
+  // Whether the page lists courseware in its own document decides if it is a
+  // unit page or only the shell around the frame it hosts, so keep both counts.
+  const ownResources = page.resources;
+  const resources = [...ownResources];
+  const seen = new Set(ownResources.map(resource => resource.id));
   let frames = 0;
-  // `window.frames` is the window proxy itself, not an array: it has a length and
-  // numeric indices but no iterator, so it must be walked by index.
-  const children = rootWindow.frames;
-  for (let index = 0; index < (children?.length ?? 0); index++) {
-    const child = children[index];
-    if (!child) continue;
-    let childDocument, childUrl;
-    try {
-      childDocument = child.document;
-      childUrl = child.location.href;
-      if (!childDocument) continue;
-      // Reading a frame's own anchors is independent of its page type: the
-      // courseware list frame is a listview page, not a unit page.
-      for (const resource of previewResources(childDocument, page.courseId, childUrl)) {
-        if (seen.has(resource.id)) continue;
-        seen.add(resource.id);
-        resources.push(resource);
-      }
-      frames++;
-    } catch { /* Cross-origin or unloaded frames hold no readable courseware. */ }
-  }
-  return { ...page, resources, frameCount: frames };
+  const visit = win => {
+    // `window.frames` is the window proxy itself, not an array: it has a length and
+    // numeric indices but no iterator, so it must be walked by index.
+    const children = win.frames;
+    for (let index = 0; index < (children?.length ?? 0); index++) {
+      const child = children[index];
+      if (!child) continue;
+      try {
+        const childDocument = child.document;
+        const childUrl = child.location.href;
+        if (!childDocument) continue;
+        frames++;
+        // Reading a frame's own anchors is independent of its page type: the
+        // courseware list may be a listview page, and the platform nests the newer
+        // courseware routes one frame deeper than the column page that hosts them.
+        for (const resource of previewResources(childDocument, page.courseId, childUrl)) {
+          if (seen.has(resource.id)) continue;
+          seen.add(resource.id);
+          resources.push(resource);
+        }
+        visit(child);
+      } catch { /* Cross-origin or unloaded frames hold no readable courseware. */ }
+    }
+  };
+  visit(rootWindow);
+  return { ...page, resources, ownResources, frameCount: frames };
 }
 
 const canonicalEntryParams = (entryUrl) =>
@@ -119,7 +135,7 @@ export function parseUnitIndex(document, pageUrl) {
     let parsed;
     try { parsed = normalizeUnitEntryUrl(anchor.getAttribute('href'), pageUrl); } catch { continue; }
     const container = anchor.closest('ul,ol,[role="list"]');
-    if (!container) continue;
+    if (!container || container.closest(NAVIGATION)) continue;
     const group = groups.get(container) ?? new Map();
     if (!group.has(parsed.columnId)) group.set(parsed.columnId, { parsed, anchor });
     groups.set(container, group);

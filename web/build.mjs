@@ -1,119 +1,59 @@
-/* 标签版官网构建
- * 书签格式对齐可用旧版：esbuild 压成 IIFE，href = javascript: + 源码（不用 eval/atob）。
- * HTML 属性转义后直接写入按钮 href，拖拽即得完整 javascript: URL。
- */
-import { createRequire } from 'node:module';
-import fs from 'node:fs';
-import path from 'node:path';
+/** Build the current static install site, self-contained bookmarklet and matching extension ZIP. */
+import { build } from 'esbuild';
+import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PROJECT_ROOT, prepareOutput } from '../scripts/release-utils.mjs';
+import { buildReleaseExtension } from '../scripts/release-extension.mjs';
+import { packageReleaseExtension, PACKAGE_NAME } from '../scripts/package-release.mjs';
+import { RELEASE_VERSION } from '../src/runtime/version.js';
 
-const require = createRequire(import.meta.url);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(__dirname, '..');
-const webDir = path.join(root, 'web');
-const distDir = path.join(root, 'dist', 'site');
-const previewDir = root;
-
-function loadTransform() {
-  const candidates = [
-    'esbuild',
-    path.join(__dirname, 'node_modules', 'esbuild'),
-    'E:/codex/File-scri/node_modules/esbuild/lib/main.js',
-    'E:/codex/File-scri/node_modules/esbuild',
-  ];
-  for (const id of candidates) {
-    try {
-      const mod = require(id);
-      return mod.transform || (mod.default && mod.default.transform);
-    } catch {
-      /* try next */
-    }
-  }
-  throw new Error('esbuild not found; run npm install --prefix web esbuild');
-}
-const transform = loadTransform();
-
-const stamp = new Date().toISOString().slice(0, 10);
-const version = '2.5.0';
-
-const read = (p) => fs.readFileSync(p, 'utf8');
-const write = (p, content) => {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, content);
-};
-
-/** 与旧版一致的 HTML 属性转义 */
-function escapeAttribute(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-let src = read(path.join(webDir, 'bookmarklet-source.js'));
-src = src.replace(/\/\*[\s\S]*?\*\//g, '').trim();
-
-// esbuild 压成可直接放在 javascript: 后的 IIFE（chrome120 + utf8，对齐旧版）
-const minified = await transform(src, {
-  minify: true,
-  target: 'chrome120',
-  charset: 'utf8',
-  format: 'iife',
-  logLevel: 'silent',
-});
-let bundle = minified.code.trim();
-// 去掉可能的尾部分号，保持旧版风格
-bundle = bundle.replace(/;+\s*$/, '');
-
-// 关键：javascript: + 内联 IIFE，禁止 eval/atob 包装
-const bookmarklet = 'javascript:' + bundle;
-
-const stampLine = `v${version} (${stamp})`;
-const inject = `<script>window.__BOOKMARKLET__=${JSON.stringify({
-  href: bookmarklet,
-  stamp: stampLine,
-})};</script>`;
-
-let index = read(path.join(webDir, 'index.html'));
-index = index.replace(
-  'href="#" draggable="true"',
-  'href="' + escapeAttribute(bookmarklet) + '" draggable="true"'
-);
-index = index.replace('</head>', inject + '\n</head>');
-
-const files = {
-  'bookmarklet.js': bundle,
-  'bookmarklet.txt': bookmarklet,
-  'site.css': read(path.join(webDir, 'site.css')),
-  'privacy.html': read(path.join(webDir, 'privacy.html')),
-  'site.js': read(path.join(webDir, 'site.js')),
-  'index.html': index,
-};
-
-for (const [name, content] of Object.entries(files)) {
-  write(path.join(distDir, name), content);
-  write(path.join(previewDir, name), content);
-}
-
-const rawBytes = Buffer.byteLength(bundle, 'utf8');
-console.log('site built:', distDir);
-console.log('bookmarklet stamp:', stampLine);
-console.log('bundle bytes:', rawBytes);
-console.log('href prefix:', bookmarklet.slice(0, 40));
-console.log('href chars:', bookmarklet.length);
-if (/eval\s*\(|atob\s*\(/.test(bundle.slice(0, 80))) {
-  console.error('bookmarklet must not start with eval/atob wrapper');
-  process.exit(1);
-}
-if (!bookmarklet.startsWith('javascript:')) {
-  console.error('bookmarklet must start with javascript:');
-  process.exit(1);
-}
-try {
+const WEB = join(PROJECT_ROOT, 'web');
+export const SITE_ASSETS = Object.freeze(['site.css', 'site.js', 'assets/mark.svg', 'assets/icons.svg', 'assets/course-folder.svg', 'assets/bookmark-guide.svg']);
+function escapeAttribute(value) { return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+export async function buildBookmarklet({ minify = true } = {}) {
+  const pkg = JSON.parse(await readFile(join(PROJECT_ROOT, 'package.json'), 'utf8'));
+  if (pkg.version !== RELEASE_VERSION) throw new Error('Package version differs from the shipped bookmarklet');
+  const result = await build({ absWorkingDir: PROJECT_ROOT, entryPoints: ['web/bookmarklet-source.js'], bundle: true, write: false, minify, target: 'chrome120', charset: 'utf8', format: 'iife', platform: 'browser', legalComments: 'none' });
+  const bundle = result.outputFiles[0].text.trim();
   new Function(bundle);
-  console.log('syntax check: ok');
-} catch (e) {
-  console.error('syntax check failed:', e.message);
-  process.exit(1);
+  if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(bundle)) throw new Error('Bookmarklet must not evaluate strings as code');
+  return bundle;
 }
+export async function buildSite({ output = join(PROJECT_ROOT, 'dist', 'site'), stamp = new Date().toISOString().slice(0, 10), extensionDirectory } = {}) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(stamp)) throw new Error('Invalid build date');
+  const bundle = await buildBookmarklet();
+  const directory = await prepareOutput(output);
+  const extension = extensionDirectory || await buildReleaseExtension({ output: directory + '-extension' });
+  const pkg = await packageReleaseExtension(extension);
+  const href = 'javascript:' + encodeURIComponent(bundle);
+  const data = { href, stamp: 'v' + RELEASE_VERSION + ' (' + stamp + ')' };
+  const values = { VERSION: RELEASE_VERSION, BUILD_DATE: stamp, PACKAGE_SIZE: Math.round(pkg.size / 1024) + ' KiB' };
+  const template = html => {
+    const rendered = html.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => {
+      if (!Object.hasOwn(values, key)) throw new Error('Unknown website template value: ' + key);
+      return escapeAttribute(values[key]);
+    });
+    if (/\{\{[A-Z_]+\}\}/.test(rendered)) throw new Error('Unresolved website template');
+    return rendered;
+  };
+  let html = template(await readFile(join(WEB, 'index.html'), 'utf8'));
+  if (!html.includes('href="#" draggable="true"')) throw new Error('Bookmark install anchor missing');
+  html = html.replace('href="#" draggable="true"', 'href="' + escapeAttribute(href) + '" draggable="true"');
+  const json = JSON.stringify(data).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
+  html = html.replace('</head>', '<script>window.__BOOKMARKLET__=' + json + ';</script>\n</head>');
+  const release = { version: RELEASE_VERSION, builtAt: stamp, extension: { file: 'downloads/' + PACKAGE_NAME, bytes: pkg.size, sha256: pkg.sha256 }, bookmarklet: { file: 'bookmarklet.txt', version: RELEASE_VERSION }, repository: 'https://github.com/vg188/THEOL-downloader' };
+  await Promise.all([mkdir(join(directory, 'assets')), mkdir(join(directory, 'downloads'))]);
+  await Promise.all([
+    writeFile(join(directory, 'index.html'), html),
+    writeFile(join(directory, 'privacy.html'), template(await readFile(join(WEB, 'privacy.html'), 'utf8'))),
+    writeFile(join(directory, 'bookmarklet.js'), bundle),
+    writeFile(join(directory, 'bookmarklet.txt'), href),
+    writeFile(join(directory, 'release.json'), JSON.stringify(release, null, 2) + '\n'),
+    writeFile(join(directory, 'downloads', PACKAGE_NAME), pkg.bytes),
+    copyFile(join(PROJECT_ROOT, 'THIRD_PARTY_NOTICES.md'), join(directory, 'THIRD_PARTY_NOTICES.md')),
+    ...SITE_ASSETS.map(file => copyFile(join(WEB, file), join(directory, file))),
+  ]);
+  return directory;
+}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log('Site: ' + await buildSite());

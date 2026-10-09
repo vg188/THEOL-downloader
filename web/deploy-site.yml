@@ -21,11 +21,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web/package.json
-      - name: Install build deps
-        run: npm install --prefix web esbuild@0.25.12
-      - name: Build site
-        run: node web/build.mjs
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run regression tests
+        run: npm test
+      - name: Build website, bookmarklet and matching extension ZIP
+        run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

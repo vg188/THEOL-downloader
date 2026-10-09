@@ -33,10 +33,13 @@ export function describeSurface(document, pageUrl, {
       // page itself remains a valid current-unit surface.
       if (!(error instanceof AppError)) throw error;
     }
-    // A lesson/newpage document with neither courseware nor a bounded unit list
-    // is a layout shell: its content lives in a nested frame, and that frame
-    // stays the scanned surface.
-    if (!unitIndex && !unitPage.resources.length) return null;
+    // A layout page with no unit list and no courseware of its own is only the
+    // shell around the frame it hosts — the 课程资源 folder view is exactly that.
+    // Its child frames stay the scanned surface, so the shell must not outrank
+    // them; a shell that does show a unit list keeps unit semantics even when the
+    // courseware is rendered below it.
+    const ownResources = unitPage.ownResources ?? unitPage.resources;
+    if (!unitIndex && !ownResources.length) return null;
     return { surface: 'unit-study', modeOptions: unitIndex ? ['current', 'all'] : ['current'], unitPage, unitIndex };
   }
   return null;

@@ -1,8 +1,27 @@
-import { AppError, errorResult } from './policy.js';
+import { AppError, ORIGIN, errorResult } from './policy.js';
 import { withDeadline, readHtmlResponse } from './network.js';
 import { normalizeUnitPageUrl, previewResources } from './unit.js';
 
 const LOGIN_TITLE = /登录|登陆|统一身份认证|sign\s*in|log\s*in/i;
+// The identity system lives on its own host, so a transfer that leaves the
+// platform or lands on an auth-looking label is the honest "your session ended"
+// signal. Any other same-origin target is a page this build does not read, and
+// telling the student to log in again for that sends them chasing the wrong
+// repair. Labels and path segments are matched whole on purpose: a substring
+// test would read the word "lesson" as an SSO endpoint.
+const AUTH_HOST_LABEL = /^(portal|passport|sso|cas|auth|oauth|login|signin|account|identity)$/i;
+const AUTH_PATH_SEGMENT = /^(login|logon|signin|sign-in|sign_in|logout|sso|cas|auth|oauth|oauth2|authorization|identity)$/i;
+
+function isIdentityRedirect(value) {
+  try {
+    const url = new URL(value);
+    if (url.origin !== ORIGIN) return true;
+    return url.hostname.split('.').some(label => AUTH_HOST_LABEL.test(label))
+      || url.pathname.split('/').some(segment => AUTH_PATH_SEGMENT.test(segment));
+  } catch {
+    return true;
+  }
+}
 
 export async function collectUnitResources(index, {
   fetcher = globalThis.fetch, parseDocument, signal, timeoutMs = 15000, onProgress = async () => {},
@@ -37,7 +56,10 @@ export async function collectUnitResources(index, {
           let pageUrl = entry.entryUrl;
           if (response.url !== entry.entryUrl) {
             try { pageUrl = normalizeUnitPageUrl(response.url, index.courseId).url; }
-            catch { throw new AppError('LOGIN_REQUIRED', '登录已失效或页面发生跳转，请重新登录后扫描'); }
+            catch {
+              if (isIdentityRedirect(response.url)) throw new AppError('LOGIN_REQUIRED', '登录已失效或页面发生跳转，请重新登录后扫描');
+              throw new AppError('UNSUPPORTED_UNIT_PAGE', '该栏目打开的页面不是本课程的单元页面，请改用“扫描当前单元”');
+            }
           }
           const html = await readHtmlResponse(response, {
             signal: requestSignal,

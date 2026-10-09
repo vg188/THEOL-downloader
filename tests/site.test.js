@@ -20,7 +20,7 @@ const install = indexDoc.querySelector('#bookmarklet-install');
 const payload = install.getAttribute('href').replace(/^javascript:/, '');
 
 test('buildSite 只发布两个页面与本地资源，产物通过安全检查', async (t) => {
-  assert.equal(output, join(projectRoot, 'dist', 'site'));
+  assert.equal(output, join(projectRoot, 'dist', 'legacy-site'));
   const files = await assertSafeArtifact(output);
   assert.deepEqual([...files].sort(), ['index.html', 'privacy.html', 'site.css', 'site.js']);
   t.diagnostic(`书签 payload 长度：${payload.length} 字符`);
@@ -68,12 +68,11 @@ test('页面显示的书签版本就是书签自带的版本', () => {
   }
 });
 
-test('四处版本号不一致时拒绝构建，一致时返回该版本', async () => {
+test('旧版三处版本号不一致时拒绝构建，与当前发布版版本独立', async () => {
   const scratch = await mkdtemp(join(tmpdir(), 'site-version-'));
   try {
     await mkdir(join(scratch, 'public'), { recursive: true });
     const written = async version => {
-      await writeFile(join(scratch, 'package.json'), JSON.stringify({ version }), 'utf8');
       await writeFile(join(scratch, 'public', 'manifest.json'), JSON.stringify({ version }), 'utf8');
     };
     await written(BOOKMARKLET_VERSION);
@@ -81,7 +80,7 @@ test('四处版本号不一致时拒绝构建，一致时返回该版本', async
     await written('9.9.9');
     await assert.rejects(
       () => assertSingleReleaseVersion({ projectRoot: scratch, config }),
-      /版本号不一致.*package\.json=9\.9\.9.*site\/config\.json/,
+      /版本号不一致.*public\/manifest\.json=9\.9\.9.*site\/config\.json/,
     );
   } finally {
     await rm(scratch, { recursive: true, force: true });
@@ -133,8 +132,8 @@ test('商店未通过审核时，插件版卡片直接给出本仓库的包与�
   assert.match(card.textContent, /不会自动更新/, 'reinstalling is stated, not hidden');
   assert.equal(indexDoc.body.textContent.includes('Chrome 商店审核中'), false, 'no dead control is advertised');
   // The package name in the link is the one the packager writes.
-  const packager = await readFile(join(projectRoot, 'scripts', 'package.py'), 'utf8');
-  assert.ok(packager.includes('buct-course-downloader.zip'), 'packager renamed without the site');
+  const { PACKAGE_NAME } = await import('../scripts/package-release.mjs');
+  assert.equal(new URL(control.getAttribute('href')).pathname.split('/').at(-1), PACKAGE_NAME, 'packager renamed without the site');
 });
 
 test('对比表与卡片说的是同一种安装方式', () => {

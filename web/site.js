@@ -1,49 +1,70 @@
+// Installation helpers only: no network, account access, telemetry or course scanning.
 (function () {
-  var stampEl = document.getElementById('bookmarklet-stamp');
+  'use strict';
   var install = document.getElementById('bookmarklet-install');
-  var copyBtn = document.getElementById('copy-bookmarklet');
-  var status = document.getElementById('copy-status');
   if (!install) return;
+  var data = window.__BOOKMARKLET__ || {};
+  var copyButton = document.getElementById('copy-bookmarklet');
+  var status = document.getElementById('copy-status');
+  var stamp = document.getElementById('bookmarklet-stamp');
+  var manual = document.getElementById('manual-code');
+  var textarea = document.getElementById('bookmarklet-code');
+  if (typeof data.href === 'string' && data.href.indexOf('javascript:') === 0) install.setAttribute('href', data.href);
+  if (stamp && data.stamp) stamp.textContent = data.stamp;
 
-  var data = window.__BOOKMARKLET__;
-  if (data && data.href) {
-    install.setAttribute('href', data.href);
+  function announce(message, error) {
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.error = error ? 'true' : 'false';
   }
-  if (stampEl) stampEl.textContent = (data && data.stamp) || '';
-
-  function ok(msg) { if (status) status.textContent = msg; }
-  function fail(msg) { if (status) status.textContent = msg; }
-
-  if (copyBtn) {
-    copyBtn.addEventListener('click', function () {
-      var href = install.getAttribute('href') || (data && data.href) || '';
-      if (!href || href === '#') {
-        fail('书签代码未就绪，请刷新页面');
-        return;
-      }
-      function done() { ok('已复制书签代码，可在书签管理器新建书签并粘贴到网址栏'); }
-      function nope() { fail('复制失败，请右键上方按钮 →「复制链接地址」'); }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(href).then(done).catch(nope);
-      } else {
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = href;
-          ta.style.position = 'fixed';
-          ta.style.left = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          ta.remove();
-          done();
-        } catch (e) { nope(); }
-      }
-    });
+  function legacyCopy(text) {
+    var field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.setAttribute('aria-label', '临时复制内容');
+    field.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+    var focused = document.activeElement;
+    document.body.appendChild(field);
+    field.select();
+    var copied = false;
+    try { copied = document.execCommand('copy') === true; }
+    catch (error) { copied = false; }
+    finally { field.remove(); if (focused && typeof focused.focus === 'function') focused.focus({ preventScroll: true }); }
+    return copied;
   }
-
-  install.addEventListener('click', function (e) {
-    // 在官网点击时只提示安装方式，不执行书签
-    e.preventDefault();
-    ok('请把「课程资源助手」拖到书签栏，再到 THEOL 课程页点击使用');
+  async function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; }
+      catch (error) { /* A denied Clipboard permission still has a manual fallback. */ }
+    }
+    return legacyCopy(text);
+  }
+  if (copyButton) copyButton.addEventListener('click', async function () {
+    var href = install.getAttribute('href') || '';
+    if (href.indexOf('javascript:') !== 0) { announce('书签代码未就绪，请刷新页面；也可以下载 Chrome 扩展。', true); return; }
+    copyButton.disabled = true;
+    try {
+      if (await copyText(href)) announce('已复制。新建书签，名称填“课程资源助手”，把代码粘贴到“网址”栏。');
+      else {
+        if (manual && textarea) {
+          textarea.value = href; manual.hidden = false; manual.open = true;
+          textarea.focus(); textarea.select();
+        }
+        announce('浏览器未允许自动复制。完整代码已在下方选中，请按 Ctrl+C（macOS 用 ⌘C）手动复制。', true);
+      }
+    } finally { copyButton.disabled = false; }
+  });
+  install.addEventListener('click', function (event) {
+    event.preventDefault();
+    announce('请把这个按钮拖到书签栏，再到 THEOL 课程页点击书签使用。拖拽不方便时，可复制书签代码。');
+  });
+  var addressButton = document.getElementById('copy-extensions-url');
+  var addressStatus = document.getElementById('extension-copy-status');
+  if (addressButton) addressButton.addEventListener('click', async function () {
+    addressButton.disabled = true;
+    try {
+      var success = await copyText('chrome://extensions');
+      if (addressStatus) addressStatus.textContent = success ? '地址已复制，粘贴到浏览器地址栏打开。' : '自动复制不可用，请手动复制上面的 chrome://extensions。';
+    } finally { addressButton.disabled = false; }
   });
 })();

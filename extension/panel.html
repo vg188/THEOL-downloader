@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>北化课件下载 · 标签版</title>
+  <title>课程资源助手 · 扩展</title>
   <link rel="stylesheet" href="panel.css" />
 </head>
 <body>
@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-mark">⬇</span>
         <div>
-          <h1>北化课件下载</h1>
+          <h1>课程资源助手</h1>
           <p class="subtitle">标签版 · 树状勾选批量下载</p>
         </div>
       </div>
@@ -43,7 +43,7 @@
         <button class="type-tab" data-group="archive" type="button">压缩包</button>
         <button class="type-tab" data-group="other" type="button">其他</button>
       </nav>
-      <input id="searchInput" class="search" type="search" placeholder="搜索文件名…" autocomplete="off" />
+      <input id="searchInput" class="search" aria-label="搜索文件名" type="search" placeholder="搜索文件名…" autocomplete="off" />
       <div class="tree-actions">
         <button id="btnExpand" class="btn ghost" type="button">展开</button>
         <button id="btnCollapse" class="btn ghost" type="button">折叠</button>
@@ -54,7 +54,7 @@
 
     <main class="main">
       <section class="tree-panel">
-        <div id="statusBar" class="status-bar">尚未扫描</div>
+        <div id="statusBar" class="status-bar" role="status" aria-live="polite">尚未扫描</div>
         <div id="treeRoot" class="tree-root" role="tree" aria-label="课件列表"></div>
         <div id="emptyState" class="empty">
           <p>点击右上角「扫描」识别当前课程的课件。</p>
@@ -68,6 +68,7 @@
             <h2>下载记录</h2>
             <button id="btnClearJobs" class="btn ghost sm" type="button">清除完成</button>
           </div>
+          <p class="jobs-note">完成状态由 Chrome 确认，并核对保存名称与已知大小；原生下载不逐字节复核落盘内容。</p>
           <div id="jobsList" class="jobs-list"></div>
         </section>
         <section class="selection-panel">
@@ -75,8 +76,8 @@
             <span>已选 <strong id="selCount">0</strong> 个文件</span>
             <span id="selHidden" class="muted"></span>
           </div>
-          <div class="sel-line muted">
-            保存到：下载目录 / <span id="saveFolder">课件</span> / 目录 / 文件名
+          <div class="sel-line muted save-path">
+            保存到：下载目录 / <span id="saveFolder">课件</span> / 资源分区 / 目录 / 文件名
           </div>
           <ul id="selPreview" class="sel-preview"></ul>
         </section>

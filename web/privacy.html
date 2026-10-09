@@ -3,39 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
 <title>隐私说明 · 课程资源助手</title>
+<meta name="description" content="课程资源助手的本地处理、存储与权限说明。无账号系统、无遥测，不上传课件和登录信息。">
+<link rel="canonical" href="https://vg188.github.io/THEOL-downloader/privacy.html">
+<link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
-<header class="site-header">
-  <div class="brand">
-    <span class="logo">⬇</span>
-    <div><strong><a href="index.html" style="color:inherit;text-decoration:none">课程资源助手</a></strong><small>Privacy</small></div>
+<a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="./" aria-label="课程资源助手首页"><img src="assets/mark.svg" width="38" height="38" alt=""><span><strong>课程资源助手</strong><small>Course Resource Assistant</small></span></a>
+  <nav class="site-nav" aria-label="页面导航"><a href="index.html#install">安装</a><a href="index.html#features">功能</a><a href="index.html#download">下载方式</a><a href="index.html#faq">常见问题</a><a href="privacy.html" aria-current="page">隐私</a><a class="repo-link" href="https://github.com/vg188/THEOL-downloader">GitHub <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external"></use></svg></a></nav>
+</div></header>
+<main id="main" class="page-width">
+  <div class="privacy-hero"><h1>课件留在本机，<br>隐私也一样。</h1><p>这是课程资源助手的隐私说明。本工具是学生自制项目，提供书签和 Chrome 扩展两种入口，不是北京化工大学官方产品。</p></div>
+  <div class="privacy-layout">
+    <nav class="privacy-toc" aria-label="隐私说明目录"><a href="#collection">收集什么</a><a href="#working">如何工作</a><a href="#storage">本地存储</a><a href="#boundaries">不会做的事</a><a href="#source">源码与许可</a></nav>
+    <div class="privacy-content">
+      <div class="privacy-summary"><p><strong>不收集任何数据。</strong>无工具后台服务器、无账号系统、无统计脚本、无第三方追踪。</p></div>
+      <section id="collection"><h2>收集什么</h2><p>本工具不向开发者或第三方上传账号信息、课件或使用记录。不需要你另外注册账号，也不会要求你把密码或 Cookie 交给工具。</p><p>使用前，请自行在学校教学平台完成登录。工具沿用浏览器已有会话，只读取你有权访问的资源。</p></section>
+      <section id="working"><h2>如何工作</h2><ul>
+        <li>书签代码完整保存在你的浏览器书签里，不从远程加载运行时。</li>
+        <li>课程读取功能只在 <code>course.buct.edu.cn</code> 的授权范围内工作。</li>
+        <li>使用浏览器已有登录会话读取你能访问的课件列表与下载链接。</li>
+        <li>下载通过浏览器自身下载功能完成；原格式资源流校验、ZIP 打包、图片合成 PDF 及离线 HTML／TXT 生成都在本机进行，不调用第三方转换服务。</li>
+        <li>平台原文件和整份 PDF 保留原始字节。只有明确标注的预览副本会在本机生成。</li>
+      </ul></section>
+      <section id="storage"><h2>本地存储</h2><ul>
+        <li>书签版的下载设置，如打包方式和目录结构，仅保存在本机 <code>localStorage</code>。</li>
+        <li>扩展的扫描快照与下载队列保存在本机 Chrome 存储中，可能包括生成预览所需的文本和页清单。清理已完成任务可移除相应队列记录。</li>
+        <li>扩展用隐藏的本地文档暂存已校验文件和生成型预览的 Blob，任务结束后释放；不会把完整二进制文件写入下载队列记录。</li>
+      </ul><p>移除书签不会自动清空该网站的本地设置；你可以在浏览器的网站数据设置中管理它们。下载到磁盘的文件由你自行管理。</p></section>
+      <section id="boundaries"><h2>不会做的事</h2><ul><li>不读取、复制或保存 Cookie / 账号 / 密码。</li><li>不上传课件内容、文件名、课程名、下载记录或设置。</li><li>不绕过学校权限，不尝试访问你没有权限的课程。</li><li>不会因为扫描完成就自动勾选和下载所有课件。</li></ul></section>
+      <section id="source"><h2>源码与许可</h2><p>实现可以公开检查：<a href="https://github.com/vg188/THEOL-downloader">GitHub 源码仓库</a>。依赖的开源许可见 <a href="THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>。</p><p>官网是静态安装说明页。访问学校平台、GitHub 及其托管服务时，这些网站会按各自规则处理请求；本工具没有额外嵌入追踪或统计服务。</p><p>反馈问题时只需提供操作步骤和错误提示，请先隐藏个人信息，无需提供账号、密码或 Cookie。</p></section>
+    </div>
   </div>
-  <nav class="site-nav"><a href="index.html">返回首页</a></nav>
-</header>
-<main id="main" class="section" style="max-width:760px">
-  <h1 style="margin-top:0">隐私说明</h1>
-  <p>本工具是学生自制的浏览器书签脚本，不是北京化工大学官方产品。</p>
-  <h2>收集什么</h2>
-  <p><strong>不收集任何数据。</strong>无服务器、无账号系统、无统计脚本、无第三方追踪。</p>
-  <h2>如何工作</h2>
-  <ul>
-    <li>书签代码完整保存在你的浏览器书签里，不从远程加载运行时。</li>
-    <li>只在 <code>course.buct.edu.cn</code> 页面运行。</li>
-    <li>使用浏览器已有登录会话读取你能访问的课件列表与下载链接。</li>
-    <li>下载设置（打包方式、目录结构等）仅保存在本机 <code>localStorage</code>。</li>
-    <li>下载通过浏览器自身下载功能完成；ZIP 在本地内存中生成。</li>
-  </ul>
-  <h2>不会做的事</h2>
-  <ul>
-    <li>不读取、复制或保存 Cookie / 账号 / 密码</li>
-    <li>不上传课件内容、文件名、课程名、下载记录或设置</li>
-    <li>不绕过学校权限</li>
-  </ul>
-  <h2>源码</h2>
-  <p><a href="https://github.com/vg188/THEOL-downloader">github.com/vg188/THEOL-downloader</a></p>
 </main>
-<footer class="site-footer"><p><a href="index.html">返回首页</a></p></footer>
+<footer class="site-footer page-width"><div><a class="footer-brand" href="./"><img src="assets/mark.svg" width="26" height="26" alt="">课程资源助手</a><p>学生自制，非学校官方。只下载你有权访问的资料。</p></div><div class="footer-links"><a href="index.html">返回首页</a><a href="THIRD_PARTY_NOTICES.md">开源许可</a><a href="https://github.com/vg188/THEOL-downloader">源码</a><span>v{{VERSION}} · <time datetime="{{BUILD_DATE}}">{{BUILD_DATE}}</time></span></div></footer>
 </body>
 </html>

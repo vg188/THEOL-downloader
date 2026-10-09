@@ -1,0 +1,15 @@
+# Keep source and copied release assets identical on Windows and in CI.
+* text=auto eol=lf
+
+# PDFs can look like text; never normalize their cross-reference offsets.
+*.pdf binary
+*.doc binary
+*.docx binary
+*.ppt binary
+*.pptx binary
+*.xls binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary

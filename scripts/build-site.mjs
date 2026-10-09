@@ -1,4 +1,4 @@
-// Builds the static GitHub Pages site in `dist/site`.
+// Builds the static GitHub Pages site in `dist/legacy-site`.
 //
 // The draggable bookmarklet is fully self-contained: esbuild bundles the page-side
 // runtime into one IIFE, and that IIFE becomes the anchor's `javascript:` payload.
@@ -69,19 +69,10 @@ export function readSiteConfig(source) {
   });
 }
 
-/**
- * The release number is written down in four places — `package.json`,
- * `public/manifest.json`, `site/config.json` and the bookmarklet's own module —
- * and a page that shows a stale one misleads every visitor at once. `buildSite`
- * is the only step that reads all four, so it is where they are required to agree.
- */
+/** The v1 regression site validates only its own historical release inputs. */
 export async function assertSingleReleaseVersion({ projectRoot = root, config } = {}) {
-  const [pkg, manifest] = await Promise.all([
-    readFile(join(projectRoot, 'package.json'), 'utf8'),
-    readFile(join(projectRoot, 'public', 'manifest.json'), 'utf8'),
-  ]);
+  const manifest = await readFile(join(projectRoot, 'public', 'manifest.json'), 'utf8');
   const declared = {
-    'package.json': JSON.parse(pkg).version,
     'public/manifest.json': JSON.parse(manifest).version,
     'site/config.json': config.releaseVersion,
     'src/bookmarklet/version.js': BOOKMARKLET_VERSION,
@@ -240,7 +231,7 @@ export async function assertSafeArtifact(output) {
 }
 
 /**
- * Builds `dist/site` and returns its path. Publishing the whole bookmarklet inside
+ * Builds `dist/legacy-site` and returns its path. Publishing the whole bookmarklet inside
  * the anchor means there is no runtime URL to keep alive — and no versioned path to
  * break — so the artifact is only the two pages plus their local assets.
  */
@@ -254,7 +245,7 @@ export async function buildSite({ root: projectRoot = root, configPath, output }
   const bookmarklet = createSelfContainedBookmarklet(bundleSource);
   const indexHtml = renderIndexPage({ template: await readFile(join(siteRoot, 'index.html'), 'utf8'), config, bookmarklet, build });
   const privacyHtml = renderPrivacyPage({ template: await readFile(join(siteRoot, 'privacy.html'), 'utf8'), config, build });
-  const outputDir = output ?? join(projectRoot, 'dist', 'site');
+  const outputDir = output ?? join(projectRoot, 'dist', 'legacy-site');
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
   await writeFile(join(outputDir, 'index.html'), indexHtml, 'utf8');

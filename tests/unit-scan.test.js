@@ -110,6 +110,11 @@ const wrongCourse = () => withUrl(
   new Response(unreadableBody(), { headers: { 'content-type': HTML } }),
   unitPageUrl('lesson', 13),
 );
+// The platform's own session bounce: same school domain family, identity host.
+const identityRedirect = () => withUrl(
+  new Response(unreadableBody(), { headers: { 'content-type': HTML } }),
+  'https://portal.buct.edu.cn/sso/login?service=https%3A%2F%2Fcourse.buct.edu.cn%2Fmeol%2Findex.do',
+);
 const folderListing = () => withUrl(
   new Response(unreadableBody(), { headers: { 'content-type': HTML } }),
   `${ORIGIN}/meol/common/script/resFolderViewList.do?courseId=12`,
@@ -144,9 +149,10 @@ const rejections = [
   ['status 401', () => new Response(null, { status: 401 }), 'LOGIN_REQUIRED'],
   ['server error', () => new Response(null, { status: 500 }), 'NO_DOWNLOAD'],
   ['cross-origin final url', foreignLesson, 'LOGIN_REQUIRED'],
-  ['wrong course id', wrongCourse, 'LOGIN_REQUIRED'],
-  ['folder listing url', folderListing, 'LOGIN_REQUIRED'],
-  ['other layout url', otherLayout, 'LOGIN_REQUIRED'],
+  ['identity host transfer', identityRedirect, 'LOGIN_REQUIRED'],
+  ['wrong course id', wrongCourse, 'UNSUPPORTED_UNIT_PAGE'],
+  ['folder listing url', folderListing, 'UNSUPPORTED_UNIT_PAGE'],
+  ['other layout url', otherLayout, 'UNSUPPORTED_UNIT_PAGE'],
   ['login page html', loginPage, 'LOGIN_REQUIRED'],
   ['unsupported charset', badCharset, 'BAD_FILE'],
   ['oversized body', oversized, 'BAD_FILE'],

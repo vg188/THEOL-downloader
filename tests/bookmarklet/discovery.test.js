@@ -37,6 +37,53 @@ const extensionView = win => describeSurface(win.document, win.location.href, {
   parseUnitPage: (_document, pageUrl) => parseUnitPageFrames(win, pageUrl),
 });
 
+// Real page shapes, measured from a live course on 2026-09-19: the course layout
+// page carries the tab bar, collapsed side menus and the unit list all at once,
+// and the newer courseware routes nest one frame deeper than the column page.
+const navBar = (...columns) => `<div class="nav"><ul>${columns.map((n, i) => entry(n, `栏目${i}`)).join('')}</ul></div>`;
+const hiddenMenu = (...columns) => `<div class="wrap-menu"><ul style="display:none">${columns.map(n => entry(n)).join('')}</ul></div>`;
+const sidebarUnits = (...columns) => `<div class="sidebar"><div class="wrap-menu"><ul>${columns.map(n => entry(n)).join('')}</ul></div></div>`;
+const buildlessFrames = (files, child = []) => ({
+  url: 'https://course.buct.edu.cn/meol/buildless/colUrlStuView.do?columnId=41',
+  children: [{ url: `https://course.buct.edu.cn/meol/buildless/resFolderViewList.do?columnId=41&folderid=7&lid=12`, html: files.map(n => link(n)).join('') }, ...child],
+});
+
+test('the course tab bar cannot turn a 课程资源 page into a unit page', () => {
+  const win = page({
+    url: unitPageUrl('newpage', 12), title: courseTitle, html: `${navBar(90, 91, 92, 93)}${hiddenMenu(94, 95)}`,
+    children: [{ url: 'https://course.buct.edu.cn/meol/common/script/courseResource.jsp?courseId=12', children: [directoryFrame(34, link(56) + link(57))] }],
+  });
+  const found = discoverSurface(win);
+  assert.equal(found.context.surface, 'resource-directory', 'the folder the student is looking at wins');
+  assert.deepEqual(found.context.modeOptions, ['current'], 'no all-unit range is offered on a course-resource page');
+  assert.equal(found.context.folderId, '34');
+  assert.deepEqual(ids(found.surface.directory.resources), ['12:78:56', '12:78:57']);
+});
+
+test('the unit list beside the tab bar still defines the range, and nested courseware frames are read', () => {
+  const win = page({
+    url: unitPageUrl('newpage', 12), title: courseTitle,
+    html: `${navBar(90, 91, 92, 93)}${hiddenMenu(94, 95)}${sidebarUnits(41, 42, 43)}`,
+    children: [buildlessFrames([56, 57, 58])],
+  });
+  const found = discoverSurface(win);
+  assert.equal(found.context.surface, 'unit-study');
+  assert.deepEqual(found.context.modeOptions, ['current', 'all']);
+  assert.equal(found.surface.unitIndex.entries.length, 3, 'only the visible non-navigation list counts');
+  assert.deepEqual(ids(found.surface.unitPage.resources), ['12:78:56', '12:78:57', '12:78:58'], 'courseware two frames below the shell is still found');
+  assert.deepEqual(found.surface.unitPage.ownResources, [], 'the shell itself lists no courseware');
+});
+
+test('a shell hosting both a unit list and a folder frame keeps unit semantics', () => {
+  const win = page({
+    url: unitPageUrl('newpage', 12), title: courseTitle, html: `${navBar(90, 91)}${sidebarUnits(41, 42)}`,
+    children: [directoryFrame(34, link(56))],
+  });
+  const found = discoverSurface(win);
+  assert.equal(found.context.surface, 'unit-study', 'a real unit list outranks the frame it hosts');
+  assert.deepEqual(found.context.modeOptions, ['current', 'all']);
+});
+
 test('the selected surface is exactly what the extension describes for the page', () => {
   const cases = [
     // [name, top window, the window the winning surface lives in]
@@ -50,8 +97,10 @@ test('the selected surface is exactly what the extension describes for the page'
       page({ url: unitPageUrl('newpage', 12), title: courseTitle, html: unitIndexHtml }), 0],
     ['unit page owning a nested directory frame',
       page({ url: unitPageUrl('newpage', 12), title: courseTitle, html: link(56) + unitIndexHtml, children: [directoryFrame()] }), 0],
+    // A layout page with no unit list of its own is only the shell around the
+    // folder frame it hosts, so the folder is the surface the student scans.
     ['lesson layout hosting the courseware list frame',
-      page({ url: unitPageUrl('lesson', 12), title: courseTitle, children: [directoryFrame()] }), 0],
+      page({ url: unitPageUrl('lesson', 12), title: courseTitle, children: [directoryFrame()] }), 'frames.0'],
   ];
   for (const [name, win, at] of cases) {
     const frame = at === 0 ? win : win.frames[0];

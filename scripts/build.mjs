@@ -7,7 +7,7 @@ import { writeIcons } from './icons.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export const ASSETS=['manifest.json','popup.html','popup.css','popup.js','background.js','content.js','icons/16.png','icons/32.png','icons/48.png','icons/128.png'];
 export async function buildExtension() {
-  const output=join(root,'dist','extension');
+  const output=join(root,'dist','legacy-extension');
   await mkdir(output,{recursive:true});
   const reports=[];
   for(const [entry,outfile,format] of [['src/content.js','content.js','iife'],['src/background.js','background.js','esm'],['src/popup/main.js','popup.js','esm']]) {
@@ -17,7 +17,7 @@ export async function buildExtension() {
   }
   for(const file of ['manifest.json','popup.html','popup.css'])await copyFile(join(root,'public',file),join(output,file));
   await writeIcons(join(output,'icons'));
-  await writeFile(join(root,'dist','build-report.json'),JSON.stringify(reports,null,2));
+  await writeFile(join(root,'dist','legacy-build-report.json'),JSON.stringify(reports,null,2));
   return output;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))console.log(`Loadable extension: ${await buildExtension()}`);

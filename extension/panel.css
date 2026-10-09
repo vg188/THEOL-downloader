@@ -445,3 +445,38 @@ html, body {
   .main { grid-template-columns: 1fr; }
   .side-panel { min-height: 280px; }
 }
+
+/* Keep course titles and action labels readable in narrow extension tabs. */
+.btn { white-space: nowrap; }
+.btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 760px) {
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 18px; }
+  .brand { min-width: 0; }
+  .course-meta { width: 100%; }
+  .page-hint { line-height: 1.5; overflow-wrap: anywhere; }
+  .top-actions { flex-wrap: wrap; }
+  .top-actions .btn { min-height: 40px; flex: 1; }
+  .toolbar { gap: 10px; }
+  .sel-line { flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.file-note { padding: 0 14px 8px 68px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.file-note a { color: var(--accent-2); text-underline-offset: 2px; }
+
+/* Keep original names, sanitized paths and verification limits distinct. */
+.jobs-note, .job-path, .job-detail { color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.jobs-note { margin: 0 0 14px; }
+.job-path { margin-top: 6px; user-select: text; }
+.job-detail { margin-top: 3px; }
+
+.save-path { display: block; line-height: 1.6; overflow-wrap: anywhere; }
+.job-name, .sel-preview li { white-space: pre; }
+.job-path { white-space: pre-wrap; }
+.job-error { overflow-wrap: anywhere; }
+
+.tree-label { white-space: pre; }
+
+.job-warning { margin-top: 6px; color: var(--warn); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.tree-ext.preview-type { color: var(--accent-2); white-space: nowrap; }
