@@ -48,3 +48,18 @@ test('the web package build command is relative to its own working directory', a
   const pkg = JSON.parse(await readFile(join(ROOT, 'web', 'package.json'), 'utf8'));
   assert.equal(pkg.scripts.build, 'node build.mjs');
 });
+
+test('release dependencies use integrity-pinned HTTPS tarballs from the public npm registry', async () => {
+  const lock = JSON.parse(await readFile(join(ROOT, 'package-lock.json'), 'utf8'));
+  assert.match(await readFile(join(ROOT, '.npmrc'), 'utf8'), /^registry=https:\/\/registry\.npmjs\.org\/\s*$/);
+  const dependencies = Object.entries(lock.packages).filter(([name]) => name);
+  assert.ok(dependencies.length > 0);
+  for (const [name, dependency] of dependencies) {
+    const source = new URL(dependency.resolved);
+    assert.equal(source.origin, 'https://registry.npmjs.org', name);
+    assert.equal(source.username, '', name);
+    assert.equal(source.password, '', name);
+    assert.ok(source.pathname.endsWith('.tgz'), name);
+    assert.match(dependency.integrity ?? '', /^sha512-[A-Za-z0-9+/]+=*$/, name);
+  }
+});
